@@ -1569,7 +1569,7 @@
                     '<button style="padding:10px 20px;border:none;border-radius:20px;cursor:pointer;background:#f5f5f5;" onclick="prevQuote()">← 上一句</button>' +
                     '<button style="padding:10px 20px;border:none;border-radius:20px;cursor:pointer;background:linear-gradient(135deg,#667eea,#764ba2);color:white;" onclick="nextQuote()">下一句 →</button>' +
                     '</div><div class="quote-dots" id="quoteDots"></div></div></div>';
-                initQuotes();
+                setTimeout(initQuotes, 100);
                 
             } else if (tool === 'doodle') {
                 document.getElementById('modalTitle').textContent = '🎨 涂鸦板';
