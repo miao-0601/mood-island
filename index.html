@@ -1764,19 +1764,35 @@
         var quoteIdx = 0;
         
         function initQuotes() {
+            console.log('initQuotes called, quotes length:', quotes ? quotes.length : 0);
+            var text = document.getElementById('quoteText');
+            var author = document.getElementById('quoteAuthor');
             var dots = document.getElementById('quoteDots');
-            if (!dots) return;
-            dots.innerHTML = quotes.map(function(_, i) { return '<div class="quote-dot ' + (i === 0 ? 'active' : '') + '" onclick="goQuote(' + i + ')"></div>'; }).join('');
-            updateQuote();
+            console.log('Elements found - text:', !!text, 'author:', !!author, 'dots:', !!dots);
+            if (!text || !author) {
+                // 再试一次
+                setTimeout(initQuotes, 200);
+                return;
+            }
+            text.textContent = '"' + quotes[quoteIdx].text + '"';
+            author.textContent = '— ' + quotes[quoteIdx].author;
+            if (dots) {
+                dots.innerHTML = quotes.map(function(_, i) { return '<div class="quote-dot ' + (i === 0 ? 'active' : '') + '" onclick="goQuote(' + i + ')"></div>'; }).join('');
+            }
         }
         
         function updateQuote() {
             var text = document.getElementById('quoteText');
             var author = document.getElementById('quoteAuthor');
-            if (!text) return;
+            if (!text || !author) {
+                console.log('updateQuote: elements not found');
+                return;
+            }
+            console.log('updateQuote, quoteIdx:', quoteIdx, 'text:', quotes[quoteIdx].text);
             text.textContent = '"' + quotes[quoteIdx].text + '"';
             author.textContent = '— ' + quotes[quoteIdx].author;
-            document.querySelectorAll('.quote-dot').forEach(function(d, i) { d.classList.toggle('active', i === quoteIdx); });
+            var dots = document.querySelectorAll('.quote-dot');
+            dots.forEach(function(d, i) { d.classList.toggle('active', i === quoteIdx); });
         }
         
         function prevQuote() { quoteIdx = (quoteIdx - 1 + quotes.length) % quotes.length; updateQuote(); }
