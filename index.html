@@ -532,13 +532,14 @@
         
         function login() {
             var email = document.getElementById('loginEmail').value;
-            if (!email) { showToast('请输入邮箱'); return; }
-            showToast('发送登录链接中...');
-            supabase.auth.signInWithOtp({ email: email }).then(function(result) {
+            var password = document.getElementById('loginPassword').value;
+            if (!email || !password) { showToast('请输入邮箱和密码'); return; }
+            showToast('登录中...');
+            supabase.auth.signInWithPassword({ email: email, password: password }).then(function(result) {
                 if (result.error) {
                     showToast('登录失败: ' + result.error.message);
                 } else {
-                    showToast('登录链接已发送到邮箱！请查收');
+                    showToast('登录成功！');
                 }
             });
         }
