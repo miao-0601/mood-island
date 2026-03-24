@@ -540,6 +540,7 @@
                     showToast('登录失败: ' + result.error.message);
                 } else {
                     showToast('登录成功！');
+                    // 登录成功后会通过 onAuthStateChange 自动触发 showApp
                 }
             });
         }
@@ -558,6 +559,7 @@
                 if (result.error) {
                     showToast('注册失败: ' + result.error.message);
                 } else {
+                    showToast('注册成功！请登录');
                     showToast('注册成功！请到邮箱验证');
                 }
             });
@@ -576,7 +578,19 @@
             document.getElementById('authContainer').classList.add('hidden');
             document.getElementById('appContainer').classList.remove('hidden');
             document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+            
+            // 先从本地加载
+            var localRecords = localStorage.getItem('moodRecords');
+            if (localRecords) {
+                moodRecords = JSON.parse(localRecords);
+            }
+            
+            // 更新用户信息显示
+            loadUserData();
+            
+            // 再尝试从云端同步（如果已登录）
             loadCloudData();
+            
             updateStats();
             renderFriends();
             renderMiniChart();
@@ -586,10 +600,20 @@
         function loadCloudData() {
             if (!currentUser) return;
             supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).then(function(result) {
-                if (result.data) {
-                    moodRecords = result.data.map(function(r) {
+                if (result.data && result.data.length > 0) {
+                    var cloudRecords = result.data.map(function(r) {
                         return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note };
                     });
+                    // 合并本地和云端，去重
+                    var localTimes = moodRecords.map(function(r) { return r.time; });
+                    var merged = moodRecords.slice();
+                    cloudRecords.forEach(function(r) {
+                        if (localTimes.indexOf(r.time) === -1) {
+                            merged.unshift(r);
+                        }
+                    });
+                    moodRecords = merged;
+                    localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
                 }
             });
             loadFriends();
@@ -622,20 +646,40 @@
         
         function loadProfileAndShow() {
             if (!currentUser) return;
+            // 始终使用 currentUser.email，这是登录时的邮箱
+            userData.email = currentUser.email;
+            
             supabase.from('profiles').select('*').eq('id', currentUser.id).single().then(function(result) {
                 if (result.data) {
-                    userData = {
-                        name: result.data.username || '我',
-                        email: currentUser.email,
-                        avatar: result.data.avatar,
-                        currentMood: moodRecords.length > 0 ? moodRecords[0].mood : { type: 'good', emoji: '🌤️', text: '今天的心情' }
-                    };
+                    userData.name = result.data.username || '我';
+                    userData.avatar = result.data.avatar;
+                    userData.currentMood = moodRecords.length > 0 ? moodRecords[0].mood : { type: 'good', emoji: '🌤️', text: '今天的心情' };
                     document.getElementById('userName').textContent = userData.name;
                     document.getElementById('profileName').textContent = userData.name;
-                    document.getElementById('profileEmail').textContent = userData.email;
+                    document.getElementById('profileEmail').textContent = currentUser.email || '未设置邮箱';
+                } else {
+                    // 没有profile，使用默认值
+                    document.getElementById('userName').textContent = '我';
+                    document.getElementById('profileName').textContent = '我';
+                    document.getElementById('profileEmail').textContent = currentUser.email || '未设置邮箱';
                 }
+                // 保存到本地
+                saveUserData();
                 showApp();
             });
+        }
+        
+        // 检查登录状态
+        async function checkAuth() {
+            try {
+                var result = await supabase.auth.getSession();
+                if (result.data.session) {
+                    currentUser = result.data.session.user;
+                    loadProfileAndShow();
+                }
+            } catch (e) {
+                console.log('checkAuth error:', e);
+            }
         }
         
         checkAuth();
@@ -646,7 +690,9 @@
                 userData = JSON.parse(saved);
                 document.getElementById('userName').textContent = userData.name;
                 document.getElementById('profileName').textContent = userData.name;
-                document.getElementById('profileEmail').textContent = userData.email;
+                // 显示登录邮箱或本地保存的邮箱
+                var displayEmail = (currentUser && currentUser.email) ? currentUser.email : (userData.email || '');
+                document.getElementById('profileEmail').textContent = displayEmail;
                 if (userData.avatar) {
                     document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '"><div class="my-avatar-edit">📷</div>';
                 }
@@ -681,8 +727,12 @@
             var note = document.getElementById('moodNote').value;
             var newRecord = { time: new Date().toISOString(), mood: selectedMood, note: note };
             
-            if (currentUser) {
-                // 已登录，存到云端
+            // 先保存本地
+            moodRecords.unshift(newRecord);
+            localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+            
+            // 如果已登录且有profile，尝试存云端
+            if (currentUser && currentUser.id) {
                 supabase.from('mood_records').insert({
                     user_id: currentUser.id,
                     mood_type: selectedMood.type,
@@ -691,17 +741,16 @@
                     note: note
                 }).then(function(result) {
                     if (result.error) {
-                        showToast('保存失败: ' + result.error.message);
-                    } else {
-                        showToast('心情已保存到云端！' + selectedMood.emoji);
+                        console.log('Cloud save failed, saved locally:', result.error.message);
                     }
                 });
-            } else {
-                // 未登录，存本地
-                moodRecords.push(newRecord);
-                localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
-                showToast('心情已记录（本地）！' + selectedMood.emoji);
             }
+            
+            userData.currentMood = selectedMood;
+            saveUserData();
+            document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
+            document.getElementById('currentMoodText').textContent = selectedMood.text;
+            showToast('心情已记录！' + selectedMood.emoji);
             
             moodRecords.unshift(newRecord);
             userData.currentMood = selectedMood;
@@ -926,6 +975,8 @@
         }
         
         // ============ 头像修改 ============
+        var cropImageSrc = null;
+        
         function changeAvatar() {
             document.getElementById('avatarInput').click();
         }
@@ -935,13 +986,130 @@
             if (file) {
                 var reader = new FileReader();
                 reader.onload = function(ev) {
-                    userData.avatar = ev.target.result;
-                    saveUserData();
-                    document.getElementById('userAvatar').innerHTML = '<img src="' + ev.target.result + '"><div class="my-avatar-edit">📷</div>';
-                    showToast('头像已更新！');
+                    // 显示裁剪界面
+                    showCropModal(ev.target.result);
                 };
                 reader.readAsDataURL(file);
             }
+        }
+        
+        function showCropModal(imgSrc) {
+            cropImageSrc = imgSrc;
+            var html = '<div style="text-align:center;">' +
+                '<div style="position:relative;width:280px;height:280px;margin:0 auto;overflow:hidden;border-radius:50%;background:#f0f0f0;">' +
+                '<img id="cropPreview" src="' + imgSrc + '" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;">' +
+                '</div>' +
+                '<p style="color:#888;font-size:12px;margin:12px 0;">点击并拖动图片调整位置</p>' +
+                '<div style="display:flex;gap:8px;justify-content:center;">' +
+                '<button onclick="document.getElementById(\'avatarInput\').click()" style="padding:10px 20px;border:none;border-radius:20px;background:#f5f5f5;cursor:pointer;">重新选择</button>' +
+                '<button onclick="saveCroppedAvatar()" style="padding:10px 20px;border:none;border-radius:20px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;cursor:pointer;">保存头像</button>' +
+                '</div></div>';
+            
+            // 添加拖动功能
+            setTimeout(function() {
+                var img = document.getElementById('cropPreview');
+                if (!img) return;
+                var isDragging = false;
+                var startX, startY, origX = 0, origY = 0;
+                
+                img.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    origX = img.offsetLeft;
+                    origY = img.offsetTop;
+                });
+                
+                document.addEventListener('mousemove', function(e) {
+                    if (!isDragging) return;
+                    var dx = e.clientX - startX;
+                    var dy = e.clientY - startY;
+                    img.style.left = (origX + dx) + 'px';
+                    img.style.top = (origY + dy) + 'px';
+                });
+                
+                document.addEventListener('mouseup', function() { isDragging = false; });
+                
+                // 触摸支持
+                img.addEventListener('touchstart', function(e) {
+                    isDragging = true;
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    origX = img.offsetLeft;
+                    origY = img.offsetTop;
+                });
+                
+                document.addEventListener('touchmove', function(e) {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    var dx = e.touches[0].clientX - startX;
+                    var dy = e.touches[0].clientY - startY;
+                    img.style.left = (origX + dx) + 'px';
+                    img.style.top = (origY + dy) + 'px';
+                });
+                
+                document.addEventListener('touchend', function() { isDragging = false; });
+            }, 100);
+            
+            openModal('📷 调整头像', html);
+        }
+        
+        function saveCroppedAvatar() {
+            var img = document.getElementById('cropPreview');
+            if (!img || !cropImageSrc) return;
+            
+            // 截取圆形区域
+            var canvas = document.createElement('canvas');
+            var size = 200;
+            canvas.width = size;
+            canvas.height = size;
+            var ctx = canvas.getContext('2d');
+            
+            // 计算偏移 - 使用transform
+            var transform = img.style.transform;
+            var translateX = 0, translateY = 0;
+            if (transform && transform.includes('translate')) {
+                var match = transform.match(/translate\((-?\d+)px,\s*(-?\d+)px\)/);
+                if (match) {
+                    translateX = parseInt(match[1]) || 0;
+                    translateY = parseInt(match[2]) || 0;
+                }
+            }
+            
+            // 也检查top/left
+            var left = parseInt(img.style.left) || 0;
+            var top = parseInt(img.style.top) || 0;
+            translateX += left;
+            translateY += top;
+            
+            // 画圆形遮罩
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            
+            // 使用原始图片计算正确的裁剪
+            // 图片显示在280px容器中，我们需要计算比例
+            var scale = 280 / img.naturalWidth;
+            var srcX = -translateX / scale;
+            var srcY = -translateY / scale;
+            var srcW = 280 / scale;
+            var srcH = 280 / scale;
+            
+            ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, size, size);
+            
+            var result = canvas.toDataURL('image/png');
+            userData.avatar = result;
+            saveUserData();
+            
+            // 更新我的界面头像
+            document.getElementById('userAvatar').innerHTML = '<img src="' + result + '"><div class="my-avatar-edit">📷</div>';
+            
+            // 同步更新好友列表中的我的头像
+            renderFriends();
+            
+            closeModal();
+            showToast('头像已更新！');
         }
         
         // ============ 昵称修改 ============
@@ -961,6 +1129,19 @@
             saveUserData();
             document.getElementById('userName').textContent = newName;
             document.getElementById('profileName').textContent = newName;
+            
+            // 尝试同步到云端
+            if (currentUser && currentUser.id) {
+                supabase.from('profiles').upsert({
+                    id: currentUser.id,
+                    username: newName
+                }).then(function(result) {
+                    if (result.error) {
+                        console.log('Cloud nickname save failed:', result.error.message);
+                    }
+                });
+            }
+            
             closeModal();
             showToast('昵称已更新！');
         }
@@ -1622,11 +1803,15 @@
         var currentAudio = null;
         var audioContext = null;
         
+        var audioContext = null;
+        var noiseNode = null;
+        var gainNode = null;
+        
         function selectSound(el, name) {
             // 如果点击同一个，停止播放
-            if (el.classList.contains('active') && currentAudio) {
+            if (el.classList.contains('active')) {
                 document.querySelectorAll('.sound-btn').forEach(function(b) { b.classList.remove('active'); });
-                if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+                stopNoise();
                 showToast('已停止播放');
                 return;
             }
@@ -1634,31 +1819,162 @@
             document.querySelectorAll('.sound-btn').forEach(function(b) { b.classList.remove('active'); });
             el.classList.add('active');
             
-            // 停止之前的音频
-            if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+            // 停止之前的
+            stopNoise();
             
-            // 使用免费的白噪音音频源
-            var soundUrls = {
-                '雨声': 'https://cdn.pixabay.com/audio/2022/05/13/audio_257104181f.mp3',
-                '海浪': 'https://cdn.pixabay.com/audio/2022/06/07/audio_638a9735c2.mp3',
-                '森林': 'https://cdn.pixabay.com/audio/2021/09/07/audio_d0a13f69d2.mp3',
-                '篝火': 'https://cdn.pixabay.com/audio/2021/08/09/audio_f5e2c09189.mp3',
-                '微风': 'https://cdn.pixabay.com/audio/2022/03/10/audio_946bc3eb85.mp3',
-                '夜晚': 'https://cdn.pixabay.com/audio/2022/08/02/audio_7e56e17b0c.mp3'
-            };
-            
-            var url = soundUrls[name];
-            if (url) {
-                currentAudio = new Audio(url);
-                currentAudio.loop = true;
-                currentAudio.volume = 0.5;
-                currentAudio.play().then(function() {
-                    showToast('播放 ' + name + ' 🎵');
-                }).catch(function(e) {
-                    showToast('播放失败，请重试');
-                });
-            } else {
+            // 使用 Web Audio API 生成自然声音
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = 0.3;
+                gainNode.connect(audioContext.destination);
+                
+                // 不同声音使用不同噪音参数
+                var noiseType = name;
+                if (noiseType === '雨声') {
+                    // 粉红噪音模拟雨声
+                    createPinkNoise();
+                } else if (noiseType === '海浪') {
+                    // 低频噪音模拟海浪
+                    createWaveNoise();
+                } else if (noiseType === '森林') {
+                    // 绿噪音+鸟叫模拟
+                    createForestNoise();
+                } else if (noiseType === '篝火') {
+                    // 火焰声
+                    createFireNoise();
+                } else if (noiseType === '微风') {
+                    // 白噪音模拟
+                    createWhiteNoise();
+                } else if (noiseType === '夜晚') {
+                    // 夜间噪音
+                    createNightNoise();
+                }
+                
                 showToast('播放 ' + name + ' 🎵');
+            } catch(e) {
+                console.log('Audio error:', e);
+                showToast('播放失败: ' + e.message);
+            }
+        }
+        
+        function createWhiteNoise() {
+            var bufferSize = 2 * audioContext.sampleRate;
+            var noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            var output = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            noiseNode = audioContext.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function createPinkNoise() {
+            // 粉红噪音 - 像雨声
+            var bufferSize = 4096;
+            var pinkNoise = function() {
+                var b0, b1, b2, b3, b4, b5, b6;
+                b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                var node = audioContext.createScriptProcessor(bufferSize, 1, 1);
+                node.onaudioprocess = function(e) {
+                    var output = e.outputBuffer.getChannelData(0);
+                    for (var i = 0; i < bufferSize; i++) {
+                        var white = Math.random() * 2 - 1;
+                        b0 = 0.99886 * b0 + white * 0.0555179;
+                        b1 = 0.99332 * b1 + white * 0.0750759;
+                        b2 = 0.96900 * b2 + white * 0.1538520;
+                        b3 = 0.86650 * b3 + white * 0.3104856;
+                        b4 = 0.55000 * b4 + white * 0.5329522;
+                        b5 = -0.7616 * b5 - white * 0.0168980;
+                        output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                        output[i] *= 0.11;
+                        b6 = white * 0.115926;
+                    }
+                };
+                return node;
+            };
+            noiseNode = pinkNoise();
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function createWaveNoise() {
+            // 海浪 - 低频调制噪音
+            var bufferSize = 2 * audioContext.sampleRate;
+            var noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            var output = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < bufferSize; i++) {
+                var noise = Math.random() * 2 - 1;
+                var wave = Math.sin(i / 10000) * 0.5 + 0.5;
+                output[i] = noise * wave * 0.5;
+            }
+            noiseNode = audioContext.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function createForestNoise() {
+            // 森林 - 柔和噪音
+            var bufferSize = 2 * audioContext.sampleRate;
+            var noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            var output = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < bufferSize; i++) {
+                output[i] = (Math.random() * 2 - 1) * 0.3;
+            }
+            noiseNode = audioContext.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function createFireNoise() {
+            // 篝火 - 噼啪声
+            var bufferSize = 2 * audioContext.sampleRate;
+            var noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            var output = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < bufferSize; i++) {
+                var base = Math.random() * 2 - 1;
+                var crackle = Math.random() > 0.98 ? (Math.random() * 2 - 1) * 0.8 : 0;
+                output[i] = base * 0.2 + crackle;
+            }
+            noiseNode = audioContext.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function createNightNoise() {
+            // 夜晚 - 安静的低频
+            var bufferSize = 2 * audioContext.sampleRate;
+            var noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            var output = noiseBuffer.getChannelData(0);
+            for (var i = 0; i < bufferSize; i++) {
+                var noise = Math.random() * 2 - 1;
+                var lowPass = Math.sin(i / 50000) * 0.3 + 0.7;
+                output[i] = noise * lowPass * 0.15;
+            }
+            noiseNode = audioContext.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(gainNode);
+            noiseNode.start();
+        }
+        
+        function stopNoise() {
+            if (noiseNode) {
+                try { noiseNode.stop(); } catch(e) {}
+                noiseNode = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
             }
         }
         
@@ -1764,13 +2080,16 @@
         var quoteIdx = 0;
         
         function initQuotes() {
-            console.log('initQuotes called, quotes length:', quotes ? quotes.length : 0);
+            // 确保 quotes 已经定义
+            if (typeof quotes === 'undefined') {
+                console.log('quotes not defined, retrying...');
+                setTimeout(initQuotes, 200);
+                return;
+            }
             var text = document.getElementById('quoteText');
             var author = document.getElementById('quoteAuthor');
             var dots = document.getElementById('quoteDots');
-            console.log('Elements found - text:', !!text, 'author:', !!author, 'dots:', !!dots);
             if (!text || !author) {
-                // 再试一次
                 setTimeout(initQuotes, 200);
                 return;
             }
