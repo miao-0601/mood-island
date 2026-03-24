@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>心情岛 Mood Island</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f7fa; min-height: 100vh; color: #333; }
+        .app-container { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #f5f7fa; padding-bottom: 80px; }
+        .page { display: none; padding: 16px; }
+        .page.active { display: block; }
+        .page-header { margin-bottom: 20px; padding: 8px 0; }
+        .page-title { font-size: 24px; font-weight: 700; }
+        .page-subtitle { font-size: 14px; color: #888; margin-top: 4px; }
+        .card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+        .card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .card-title.clickable { cursor: pointer; }
+        .card-title.clickable:hover { opacity: 0.8; }
+        .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; background: white; display: flex; justify-content: space-around; padding: 8px 0 24px; box-shadow: 0 -2px 20px rgba(0,0,0,0.08); z-index: 100; }
+        .add-friend-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 16px; }
+        .analysis-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .analysis-tab { flex: 1; padding: 10px; text-align: center; border-radius: 12px; background: #f5f7fa; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .analysis-tab.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .trend-svg { width: 100%; height: 160px; }
+        .pie-container { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .pie-ring { width: 120px; height: 120px; border-radius: 50%; flex-shrink: 0; position: relative; }
+        .pie-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 56px; height: 56px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .pie-legend { flex: 1; min-width: 140px; }
+        .pie-legend-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
+        .pie-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .pie-legend-bar { flex: 1; height: 6px; border-radius: 3px; background: #f0f0f0; overflow: hidden; margin: 0 8px; }
+        .pie-legend-fill { height: 100%; border-radius: 3px; }
+        .pie-legend-pct { font-size: 12px; color: #888; min-width: 32px; text-align: right; }
+        .advice-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; align-items: flex-start; }
+        .advice-item:last-child { border-bottom: none; }
+        .advice-icon { font-size: 28px; flex-shrink: 0; width: 36px; text-align: center; }
+        .advice-text { flex: 1; font-size: 14px; line-height: 1.5; color: #555; }
+        .advice-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-top: 4px; }
+        .tag-great { background: #fff9e6; color: #f5a623; }
+        .tag-good { background: #e8f5e9; color: #4caf50; }
+        .tag-normal { background: #e3f2fd; color: #2196f3; }
+        .tag-low { background: #fce4ec; color: #e91e63; }
+        .no-data-hint { text-align: center; padding: 30px 0; color: #aaa; font-size: 14px; }
+        .mood-pie { width: 160px; height: 160px; border-radius: 50%; margin: 20px auto; position: relative; }
+        .mood-pie-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+        .mood-pie-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 16px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .analysis-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
+        .summary-card { background: #f8f9fa; border-radius: 12px; padding: 14px; text-align: center; }
+        .summary-value { font-size: 20px; font-weight: 700; color: #667eea; }
+        .summary-label { font-size: 11px; color: #888; margin-top: 4px; }
+        .search-input { width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 12px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; }
+        .search-result { display: flex; align-items: center; padding: 12px; background: #f8f9fa; border-radius: 12px; margin-bottom: 8px; cursor: pointer; }
+        .search-result:hover { background: #f0f4ff; }
+        .search-avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 20px; margin-right: 12px; }
+        .search-info { flex: 1; }
+        .search-name { font-weight: 600; font-size: 14px; }
+        .search-email { font-size: 12px; color: #888; }
+        .add-btn-small { padding: 6px 14px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 20px; font-size: 12px; cursor: pointer; }
+        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; cursor: pointer; border: none; background: none; }
+        .nav-item.active .nav-icon { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .nav-item.active .nav-label { color: #667eea; font-weight: 600; }
+        .nav-icon { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #f5f7fa; }
+        .nav-label { font-size: 11px; color: #999; }
+        .auth-page { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .auth-logo { font-size: 80px; margin-bottom: 24px; animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .auth-title { font-size: 28px; font-weight: 700; color: white; margin-bottom: 8px; }
+        .auth-subtitle { font-size: 16px; color: rgba(255,255,255,0.8); margin-bottom: 40px; }
+        .auth-form { width: 100%; max-width: 360px; }
+        .auth-input { width: 100%; padding: 16px 20px; border: none; border-radius: 16px; font-size: 16px; margin-bottom: 12px; background: rgba(255,255,255,0.95); }
+        .auth-btn { width: 100%; padding: 16px; background: white; color: #667eea; border: none; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .auth-link { color: rgba(255,255,255,0.9); text-align: center; margin-top: 20px; font-size: 14px; cursor: pointer; }
+        .my-island-header { text-align: center; padding: 20px 0; }
+        .my-avatar { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; font-size: 50px; cursor: pointer; position: relative; overflow: hidden; }
+        .my-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .my-avatar-edit { position: absolute; bottom: 0; right: 0; width: 32px; height: 32px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .my-mood-display { display: inline-flex; align-items: center; gap: 8px; background: rgba(102,126,234,0.1); padding: 8px 16px; border-radius: 20px; margin-top: 8px; }
+        .mood-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .mood-item { display: flex; flex-direction: column; align-items: center; padding: 16px 8px; border-radius: 16px; background: #f8f9fa; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+        .mood-item.selected { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; transform: scale(1.05); }
+        .mood-emoji { font-size: 36px; margin-bottom: 8px; }
+        .mood-name { font-size: 12px; font-weight: 500; }
+        .mood-note-input { width: 100%; padding: 16px; border: 1px solid #e8e8e8; border-radius: 16px; font-size: 15px; resize: none; margin-top: 16px; min-height: 100px; }
+        .submit-mood-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .stat-box { text-align: center; padding: 12px 8px; background: #f8f9fa; border-radius: 16px; cursor: pointer; transition: all 0.2s; }
+        .stat-box:hover { background: #f0f4ff; transform: translateY(-2px); }
+        .stat-value { font-size: 24px; font-weight: 700; color: #667eea; }
+        .stat-label { font-size: 11px; color: #888; margin-top: 4px; }
+        .friend-card { display: flex; align-items: center; padding: 16px; background: white; border-radius: 16px; margin-bottom: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s; }
+        .friend-card:hover { transform: translateX(4px); }
+        .friend-avatar { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; margin-right: 16px; }
+        .tools-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .tool-item { background: white; border-radius: 20px; padding: 20px; text-align: center; cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: all 0.3s; }
+        .tool-item:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        .tool-icon-large { width: 60px; height: 60px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 12px; }
+        .menu-list { background: white; border-radius: 20px; overflow: hidden; }
+        .menu-item { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.2s; }
+        .menu-item:hover { background: #f8f9fa; }
+        .menu-icon { width: 40px; height: 40px; border-radius: 12px; background: #f0f4ff; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-right: 16px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: flex-end; z-index: 1000; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: white; width: 100%; max-width: 480px; border-radius: 24px 24px 0 0; padding: 24px; max-height: 85vh; overflow-y: auto; animation: slideUp 0.3s ease; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #f0f0f0; }
+        .modal-title { font-size: 20px; font-weight: 600; }
+        .modal-close { width: 36px; height: 36px; border-radius: 50%; background: #f5f7fa; border: none; font-size: 20px; cursor: pointer; }
+        .breathing-circle { width: 200px; height: 200px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: 600; animation: breathe 8s infinite ease-in-out; margin: 40px auto; }
+        @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.4); } }
+        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 14px 28px; border-radius: 28px; font-size: 14px; display: none; z-index: 2000; }
+        .hidden { display: none !important; }
+        .animation-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; display: none; }
+        .animation-overlay.active { display: block; pointer-events: auto; }
+        .hug-animation { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 150px; animation: hugPop 1.5s ease-out forwards; }
+        @keyframes hugPop { 0% { transform: translate(-50%, -50%) scale(0); opacity: 0; } 50% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+        .flower-petal { position: absolute; font-size: 40px; animation: flowerFall 3s linear forwards; }
+        @keyframes flowerFall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+        .bubble-tea { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); font-size: 100px; animation: bubbleTeaRise 2s ease-out forwards; }
+        @keyframes bubbleTeaRise { 0% { transform: translateX(-50%) translateY(0) scale(0.3); opacity: 0; } 100% { transform: translateX(-50%) translateY(-50vh) scale(1); opacity: 0; } }
+        .chat-container { display: flex; flex-direction: column; height: 60vh; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 8px 0; }
+        .chat-message { display: flex; margin-bottom: 12px; }
+        .chat-message.self { flex-direction: row-reverse; }
+        .chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-size: 18px; margin: 0 8px; }
+        .chat-bubble { max-width: 70%; padding: 10px 14px; border-radius: 16px; background: #f0f0f0; font-size: 14px; }
+        .chat-message.self .chat-bubble { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .chat-input-area { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid #eee; }
+        .chat-input { flex: 1; padding: 10px 14px; border: 1px solid #e0e0e0; border-radius: 20px; font-size: 14px; }
+        .chat-send-btn { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; font-size: 18px; cursor: pointer; }
+        .history-list { max-height: 50vh; overflow-y: auto; }
+        .history-item { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; }
+        .history-time { font-size: 11px; color: #888; width: 90px; flex-shrink: 0; }
+        .history-mood { font-size: 28px; margin: 0 12px; }
+        .history-note { flex: 1; font-size: 14px; }
+        .achievement-item { display: flex; align-items: center; padding: 16px; background: #f8f9fa; border-radius: 16px; margin-bottom: 12px; }
+        .achievement-item.unlocked { background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%); }
+        .achievement-item.locked { opacity: 0.5; }
+        .achievement-icon { width: 50px; height: 50px; border-radius: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-size: 26px; margin-right: 16px; }
+        .achievement-info { flex: 1; }
+        .achievement-name { font-weight: 600; font-size: 15px; }
+        .achievement-desc { font-size: 12px; color: #888; margin-top: 4px; }
+        .game-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .game-tab { padding: 8px 16px; border: 1px solid #e0e0e0; background: white; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .game-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; }
+        .game-container { min-height: 200px; }
+        .quote-card { background: linear-gradient(135deg, #fef9e7 0%, #fdebd0 100%); border-radius: 16px; padding: 24px; text-align: center; }
+        .quote-text { font-size: 18px; color: #5d4037; line-height: 1.6; font-style: italic; margin-bottom: 12px; }
+        .quote-author { font-size: 13px; color: #8d6e63; }
+        .quote-dots { display: flex; justify-content: center; gap: 6px; margin-top: 16px; }
+        .quote-dot { width: 8px; height: 8px; border-radius: 50%; background: #ddd; cursor: pointer; transition: all 0.2s; }
+        .quote-dot.active { background: #667eea; transform: scale(1.2); }
+        
+        /* 涂鸦板改进 */
+        .doodle-container { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
+        .doodle-canvas { border-radius: 16px; cursor: crosshair; display: block; margin: 0 auto; background: white; box-shadow: 0 4px 16px rgba(0,0,0,0.1); touch-action: none; }
+        .sticker-item { font-size: 32px; cursor: grab; padding: 8px; border-radius: 12px; transition: all 0.2s; user-select: none; }
+        .sticker-item:hover { background: #f0f0f0; transform: scale(1.15); }
+        .sticker-item:active { cursor: grabbing; transform: scale(0.95); }
+        .placed-sticker { position: absolute; font-size: 36px; cursor: move; user-select: none; transition: transform 0.1s; z-index: 10; }
+        .placed-sticker:hover { transform: scale(1.1); }
+        .doodle-tools { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; justify-content: center; align-items: center; }
+        .color-btn { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: all 0.2s; }
+        .color-btn:hover { transform: scale(1.1); }
+        .color-btn.active { border-color: #333; transform: scale(1.15); }
+        .tool-btn { padding: 8px 16px; background: #f5f5f5; border: none; border-radius: 12px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .tool-btn:hover { background: #e8e8e8; }
+        .tool-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        
+        .sound-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .sound-btn { padding: 20px; background: #f8f9fa; border-radius: 16px; text-align: center; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .sound-btn:hover { background: #f0f4ff; }
+        .sound-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; }
+        .sound-icon { font-size: 40px; margin-bottom: 8px; }
+        .sound-label { font-size: 14px; font-weight: 500; }
+        .user-nickname { font-size: 22px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        .user-nickname:hover { opacity: 0.7; }
+        
+        /* 心情图表样式 */
+        .mood-chart-container { padding: 16px 0; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .chart-period { display: flex; gap: 8px; }
+        .period-btn { padding: 6px 14px; border: none; border-radius: 16px; background: #f5f5f5; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .period-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .chart-emoji-row { display: flex; justify-content: space-between; align-items: flex-end; height: 180px; padding: 0 8px; margin-bottom: 8px; }
+        .chart-bar-wrapper { display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .chart-bar { width: 40px; border-radius: 12px 12px 8px 8px; transition: height 0.5s ease; position: relative; min-height: 20px; }
+        .chart-bar.emoji-bar { background: linear-gradient(180deg, #667eea 0%, #764ba2 100%); display: flex; align-items: flex-start; justify-content: center; padding-top: 8px; }
+        .chart-bar-label { font-size: 24px; }
+        .chart-bar-count { position: absolute; top: -24px; font-size: 12px; font-weight: 600; color: #667eea; }
+        .chart-day { font-size: 11px; color: #888; margin-top: 8px; }
+        .chart-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+        .chart-stat { text-align: center; padding: 12px; background: linear-gradient(135deg, #f8f9fa 0%, #f0f4ff 100%); border-radius: 12px; }
+        .chart-stat-value { font-size: 20px; font-weight: 700; color: #667eea; }
+        .chart-stat-label { font-size: 12px; color: #888; margin-top: 4px; }
+        .mood-legend { display: flex; justify-content: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+        
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 40px 20px; color: #888; }
+        .empty-icon { font-size: 64px; margin-bottom: 16px; }
+        .empty-title { font-size: 18px; color: #666; margin-bottom: 8px; }
+        .empty-desc { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="authContainer">
+        <div class="auth-page" id="loginPage">
+            <div class="auth-logo">🏝️</div>
+            <div class="auth-title">心情岛</div>
+            <div class="auth-subtitle">和好友一起，记录每一天的情绪天气</div>
+            <div class="auth-form">
+                <input type="email" class="auth-input" id="loginEmail" placeholder="邮箱地址">
+                <input type="password" class="auth-input" id="loginPassword" placeholder="密码">
+                <button class="auth-btn" onclick="login()">登录</button>
+                <div class="auth-link" onclick="showRegister()">还没有账号？立即注册</div>
+            </div>
+        </div>
+        <div class="auth-page hidden" id="registerPage">
+            <div class="auth-logo">🏝️</div>
+            <div class="auth-title">创建账号</div>
+            <div class="auth-subtitle">开启你的心情记录之旅</div>
+            <div class="auth-form">
+                <input type="text" class="auth-input" id="registerName" placeholder="昵称">
+                <input type="email" class="auth-input" id="registerEmail" placeholder="邮箱地址">
+                <input type="password" class="auth-input" id="registerPassword" placeholder="密码">
+                <button class="auth-btn" onclick="register()">注册</button>
+                <div class="auth-link" onclick="showLogin()">已有账号？返回登录</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="app-container hidden" id="appContainer">
+        <div class="animation-overlay" id="animationOverlay"></div>
+        
+        <!-- 首页 -->
+        <div class="page active" id="pageHome">
+            <div class="page-header">
+                <div class="page-title">我的岛屿</div>
+                <div class="page-subtitle" id="currentDate"></div>
+            </div>
+            
+            <div class="my-island-header">
+                <div class="my-avatar" onclick="changeAvatar()" id="userAvatar">
+                    <span id="avatarEmoji">😊</span>
+                    <div class="my-avatar-edit">📷</div>
+                </div>
+                <div class="user-nickname" onclick="openEditNickname()">
+                    <span id="userName">我</span> <span style="font-size:14px;opacity:0.5;">✏️</span>
+                </div>
+                <div class="my-mood-display">
+                    <span id="currentMoodEmoji">🌤️</span>
+                    <span id="currentMoodText">今天的心情</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">📝 此刻心情</div>
+                <div class="mood-grid">
+                    <div class="mood-item" onclick="selectMood('sunny','☀️','超棒',this)">
+                        <div class="mood-emoji">☀️</div>
+                        <div class="mood-name">超棒</div>
+                    </div>
+                    <div class="mood-item" onclick="selectMood('good','🌤️','不错',this)">
+                        <div class="mood-emoji">🌤️</div>
+                        <div class="mood-name">不错</div>
+                    </div>
+                    <div class="mood-item" onclick="selectMood('normal','☁️','一般',this)">
+                        <div class="mood-emoji">☁️</div>
+                        <div class="mood-name">一般</div>
+                    </div>
+                    <div class="mood-item" onclick="selectMood('low','🌧️','低落',this)">
+                        <div class="mood-emoji">🌧️</div>
+                        <div class="mood-name">低落</div>
+                    </div>
+                </div>
+                <textarea class="mood-note-input" id="moodNote" placeholder="写下此刻的心情..."></textarea>
+                <button class="submit-mood-btn" onclick="submitMood()">记录心情</button>
+            </div>
+            
+            <!-- 心情图表卡片 -->
+            <div class="card">
+                <div class="card-title clickable" onclick="showMoodChart()">
+                    📊 心情趋势
+                    <span style="margin-left:auto;font-size:12px;color:#888;">查看详情 ›</span>
+                </div>
+                <div id="miniChart" style="height:80px;"></div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">📋 我的数据</div>
+                <div class="stats-row">
+                    <div class="stat-box" onclick="showMoodHistory()">
+                        <div class="stat-value" id="statCount">0</div>
+                        <div class="stat-label">记录次数</div>
+                    </div>
+                    <div class="stat-box" onclick="showMoodHistory()">
+                        <div class="stat-value" id="statDays">0</div>
+                        <div class="stat-label">记录天数</div>
+                    </div>
+                    <div class="stat-box" onclick="switchPage('friends')">
+                        <div class="stat-value" id="statFriends">2</div>
+                        <div class="stat-label">好友</div>
+                    </div>
+                    <div class="stat-box" onclick="showWarmthHistory()">
+                        <div class="stat-value" id="statWarmth">0</div>
+                        <div class="stat-label">收到关心</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 好友页 -->
+        <div class="page" id="pageFriends">
+            <div class="page-header">
+                <div class="page-title">好友群岛</div>
+                <div class="page-subtitle">看看朋友们今天怎么样</div>
+            </div>
+            <button class="add-friend-btn" onclick="showAddFriend()">➕ 添加好友</button>
+            <div id="friendsList"></div>
+        </div>
+        
+        <!-- 分析页 -->
+        <div class="page" id="pageAnalysis">
+            <div class="page-header">
+                <div class="page-title">心情分析</div>
+                <div class="page-subtitle">了解你的情绪变化</div>
+            </div>
+            <div class="card">
+                <div class="analysis-tabs">
+                    <div class="analysis-tab active" onclick="switchAnalysis('day',this)">今日</div>
+                    <div class="analysis-tab" onclick="switchAnalysis('week',this)">本周</div>
+                    <div class="analysis-tab" onclick="switchAnalysis('month',this)">本月</div>
+                </div>
+                <!-- 心情趋势折线图 -->
+                <div class="card-title">📈 心情趋势</div>
+                <div id="trendChart" style="width:100%;height:160px;position:relative;"></div>
+                <div id="trendLabels" style="display:flex;justify-content:space-between;padding:0 20px;margin-top:4px;font-size:11px;color:#888;"></div>
+            </div>
+            <div class="card" style="margin-top:12px;">
+                <div class="card-title">🎯 心情分布</div>
+                <div id="pieChart" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;"></div>
+            </div>
+            <div class="card" style="margin-top:12px;">
+                <div class="card-title">💡 智能建议</div>
+                <div id="adviceList"></div>
+            </div>
+        </div>
+        
+        <!-- 工具页 -->
+        <div class="page" id="pageTools">
+            <div class="page-header">
+                <div class="page-title">情绪工具箱</div>
+                <div class="page-subtitle">当你需要放松时</div>
+            </div>
+            <div class="tools-grid">
+                <div class="tool-item" onclick="openTool('breathe')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#667eea,#764ba2);">🫁</div>
+                    <div style="font-weight:600;">深呼吸</div>
+                    <div style="font-size:12px;color:#888;">放松身心</div>
+                </div>
+                <div class="tool-item" onclick="openTool('sounds')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#4facfe,#00f2fe);">🎵</div>
+                    <div style="font-weight:600;">白噪音</div>
+                    <div style="font-size:12px;color:#888;">多种声音</div>
+                </div>
+                <div class="tool-item" onclick="openTool('games')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#fa709a,#fee140);">🎮</div>
+                    <div style="font-weight:600;">解压游戏</div>
+                    <div style="font-size:12px;color:#888;">多款游戏</div>
+                </div>
+                <div class="tool-item" onclick="openTool('zen')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#a8edea,#fed6e3);">🧘</div>
+                    <div style="font-weight:600;">冥想</div>
+                    <div style="font-size:12px;color:#888;">5分钟练习</div>
+                </div>
+                <div class="tool-item" onclick="openTool('quotes')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#ffecd2,#fcb69f);">💭</div>
+                    <div style="font-weight:600;">正能量</div>
+                    <div style="font-size:12px;color:#888;">每日一句</div>
+                </div>
+                <div class="tool-item" onclick="openTool('doodle')">
+                    <div class="tool-icon-large" style="background:linear-gradient(135deg,#d299c2,#fef9d7);">🎨</div>
+                    <div style="font-weight:600;">涂鸦板</div>
+                    <div style="font-size:12px;color:#888;">释放创意</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 我的页 -->
+        <div class="page" id="pageProfile">
+            <div style="text-align:center;padding:32px 0;">
+                <div class="my-avatar" style="margin:0 auto 16px;">
+                    <span id="profileAvatarEmoji">😊</span>
+                </div>
+                <div style="font-size:22px;font-weight:600;" id="profileName">我</div>
+                <div style="font-size:14px;color:#888;margin-top:4px;" id="profileEmail">demo@example.com</div>
+            </div>
+            <div class="menu-list">
+                <div class="menu-item" onclick="showMoodChart()">
+                    <div class="menu-icon">📊</div>
+                    <div style="flex:1;">心情图表</div>
+                    <div style="color:#ccc;">›</div>
+                </div>
+                <div class="menu-item" onclick="showMoodHistory()">
+                    <div class="menu-icon">📈</div>
+                    <div style="flex:1;">心情历史</div>
+                    <div style="color:#ccc;">›</div>
+                </div>
+                <div class="menu-item" onclick="showAchievements()">
+                    <div class="menu-icon">🏆</div>
+                    <div style="flex:1;">我的成就</div>
+                    <div style="color:#ccc;">›</div>
+                </div>
+                <div class="menu-item" onclick="showWarmthHistory()">
+                    <div class="menu-icon">💝</div>
+                    <div style="flex:1;">收到的关心</div>
+                    <div style="color:#ccc;">›</div>
+                </div>
+                <div class="menu-item" onclick="logout()">
+                    <div class="menu-icon">🚪</div>
+                    <div style="flex:1;">退出登录</div>
+                    <div style="color:#ccc;">›</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 底部导航 -->
+        <div class="bottom-nav">
+            <button class="nav-item active" onclick="switchPage('home',this)">
+                <div class="nav-icon">🏝️</div>
+                <div class="nav-label">我的岛</div>
+            </button>
+            <button class="nav-item" onclick="switchPage('friends',this)">
+                <div class="nav-icon">👥</div>
+                <div class="nav-label">好友</div>
+            </button>
+            <button class="nav-item" onclick="switchPage('analysis',this)">
+                <div class="nav-icon">📊</div>
+                <div class="nav-label">分析</div>
+            </button>
+            <button class="nav-item" onclick="switchPage('tools',this)">
+                <div class="nav-icon">🧰</div>
+                <div class="nav-label">工具</div>
+            </button>
+            <button class="nav-item" onclick="switchPage('profile',this)">
+                <div class="nav-icon">👤</div>
+                <div class="nav-label">我的</div>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">标题</div>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+    
+    <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="handleAvatarChange(event)">
+    <div class="toast" id="toast"></div>
+    
+    <script>
+        // ============ 数据 ============
+        var userData = { name: '我', email: '', avatar: null, currentMood: { type: 'good', emoji: '🌤️', text: '今天的心情' } };
+        var moodRecords = JSON.parse(localStorage.getItem('moodRecords') || '[]');
+        var warmthRecords = JSON.parse(localStorage.getItem('warmthRecords') || '[]');
+        var selectedMood = null;
+        var friends = [
+            { id: 'f1', name: '小明', avatar: '🐱', mood: '⛅', moodText: '今天有点累' },
+            { id: 'f2', name: '小红', avatar: '🐶', mood: '🌧️', moodText: '需要安慰' }
+        ];
+        var chatHistory = {};
+        var breatheInterval, zenInterval;
+        
+        // 心情emoji映射
+        var moodEmojis = { 'sunny': '☀️', 'good': '🌤️', 'normal': '☁️', 'low': '🌧️' };
+        var moodColors = { 'sunny': '#ffd700', 'good': '#87ceeb', 'normal': '#b0c4de', 'low': '#778899' };
+        
+        // ============ 工具函数 ============
+        function formatTime(timeStr) {
+            if (!timeStr) return '未知时间';
+            var date = new Date(timeStr);
+            if (isNaN(date.getTime())) return '未知时间';
+            return date.toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+        
+        function getMoodEmoji(mood) {
+            if (!mood) return '🌤️';
+            if (typeof mood === 'string') return mood;
+            return mood.emoji || '🌤️';
+        }
+        
+        function getMoodType(mood) {
+            if (!mood) return 'good';
+            if (typeof mood === 'string') {
+                for (var key in moodEmojis) {
+                    if (moodEmojis[key] === mood) return key;
+                }
+                return 'good';
+            }
+            return mood.type || 'good';
+        }
+        
+        function getMoodText(mood) {
+            if (!mood) return '';
+            if (typeof mood === 'string') return '';
+            return mood.text || '';
+        }
+        
+        // ============ 认证 ============
+        function showLogin() {
+            document.getElementById('loginPage').classList.remove('hidden');
+            document.getElementById('registerPage').classList.add('hidden');
+        }
+        
+        function showRegister() {
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('registerPage').classList.remove('hidden');
+        }
+        
+        function login() {
+            var email = document.getElementById('loginEmail').value;
+            if (!email) { showToast('请输入邮箱'); return; }
+            userData.email = email;
+            saveUserData();
+            loadUserData();
+            showApp();
+        }
+        
+        function register() {
+            var name = document.getElementById('registerName').value;
+            var email = document.getElementById('registerEmail').value;
+            if (!name || !email) { showToast('请填写完整信息'); return; }
+            userData.name = name;
+            userData.email = email;
+            saveUserData();
+            loadUserData();
+            showApp();
+        }
+        
+        function logout() {
+            localStorage.clear();
+            document.getElementById('appContainer').classList.add('hidden');
+            document.getElementById('authContainer').classList.remove('hidden');
+        }
+        
+        function showApp() {
+            document.getElementById('authContainer').classList.add('hidden');
+            document.getElementById('appContainer').classList.remove('hidden');
+            document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+            updateStats();
+            renderFriends();
+            renderMiniChart();
+            renderAnalysis();
+        }
+        
+        function loadUserData() {
+            var saved = localStorage.getItem('userData');
+            if (saved) {
+                userData = JSON.parse(saved);
+                document.getElementById('userName').textContent = userData.name;
+                document.getElementById('profileName').textContent = userData.name;
+                document.getElementById('profileEmail').textContent = userData.email;
+                if (userData.avatar) {
+                    document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '"><div class="my-avatar-edit">📷</div>';
+                }
+                if (userData.currentMood) {
+                    document.getElementById('currentMoodEmoji').textContent = userData.currentMood.emoji;
+                    document.getElementById('currentMoodText').textContent = userData.currentMood.text;
+                }
+            }
+        }
+        
+        function saveUserData() {
+            localStorage.setItem('userData', JSON.stringify(userData));
+        }
+        
+        // ============ 页面切换 ============
+        function switchPage(page, btn) {
+            document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+            document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+            document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+            if (btn) btn.classList.add('active');
+        }
+        
+        // ============ 心情功能 ============
+        function selectMood(type, emoji, text, el) {
+            selectedMood = { type: type, emoji: emoji, text: text };
+            document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
+            el.classList.add('selected');
+        }
+        
+        function submitMood() {
+            if (!selectedMood) { showToast('请先选择一个心情'); return; }
+            var note = document.getElementById('moodNote').value;
+            moodRecords.push({ time: new Date().toISOString(), mood: selectedMood, note: note });
+            localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+            
+            userData.currentMood = selectedMood;
+            saveUserData();
+            document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
+            document.getElementById('currentMoodText').textContent = selectedMood.text;
+            
+            showToast('心情已记录！' + selectedMood.emoji);
+            document.getElementById('moodNote').value = '';
+            document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
+            selectedMood = null;
+            updateStats();
+            renderMiniChart();
+        }
+        
+        function updateStats() {
+            document.getElementById('statCount').textContent = moodRecords.length;
+            var uniqueDays = new Set(moodRecords.map(function(r) { return new Date(r.time).toDateString(); })).size;
+            document.getElementById('statDays').textContent = uniqueDays;
+            document.getElementById('statWarmth').textContent = warmthRecords.length;
+        }
+        
+        // ============ 心情图表 ============
+        function renderMiniChart() {
+            var container = document.getElementById('miniChart');
+            if (!container) return;
+            
+            if (moodRecords.length === 0) {
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:14px;">还没有记录哦，快去记录心情吧～ 📝</div>';
+                return;
+            }
+            
+            // 最近7天的数据
+            var days = [];
+            for (var i = 6; i >= 0; i--) {
+                var d = new Date();
+                d.setDate(d.getDate() - i);
+                days.push(d.toDateString());
+            }
+            
+            var dayCounts = {};
+            days.forEach(function(d) { dayCounts[d] = { sunny: 0, good: 0, normal: 0, low: 0, total: 0 }; });
+            
+            moodRecords.forEach(function(r) {
+                var d = new Date(r.time).toDateString();
+                if (dayCounts[d]) {
+                    var type = getMoodType(r.mood);
+                    dayCounts[d][type]++;
+                    dayCounts[d].total++;
+                }
+            });
+            
+            var html = '<div style="display:flex;justify-content:space-around;align-items:flex-end;height:100%;padding:0 8px;">';
+            days.forEach(function(d, i) {
+                var counts = dayCounts[d];
+                var mainMood = 'good';
+                var maxCount = 0;
+                ['sunny', 'good', 'normal', 'low'].forEach(function(t) {
+                    if (counts[t] > maxCount) { maxCount = counts[t]; mainMood = t; }
+                });
+                var height = counts.total > 0 ? Math.min(counts.total * 20, 70) : 10;
+                var dayLabel = new Date(d).getDate();
+                var isToday = i === 6;
+                html += '<div style="display:flex;flex-direction:column;align-items:center;">';
+                html += '<div style="width:24px;height:' + height + 'px;border-radius:8px;background:' + (isToday ? 'linear-gradient(180deg,#667eea,#764ba2)' : '#e0e0e0') + ';display:flex;align-items:flex-start;justify-content:center;padding-top:4px;">';
+                if (counts.total > 0) html += '<span style="font-size:14px;">' + moodEmojis[mainMood] + '</span>';
+                html += '</div>';
+                html += '<span style="font-size:10px;color:' + (isToday ? '#667eea' : '#aaa') + ';margin-top:4px;">' + dayLabel + '日</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function showMoodChart() {
+            var html = '<div class="mood-chart-container">';
+            
+            if (moodRecords.length === 0) {
+                html += '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">还没有数据</div><div class="empty-desc">快去记录心情吧～</div></div>';
+            } else {
+                // 最近7天数据
+                var days = [];
+                for (var i = 6; i >= 0; i--) {
+                    var d = new Date();
+                    d.setDate(d.getDate() - i);
+                    days.push({ date: d, dateStr: d.toDateString() });
+                }
+                
+                var dayCounts = {};
+                days.forEach(function(d) { dayCounts[d.dateStr] = { sunny: 0, good: 0, normal: 0, low: 0, total: 0 }; });
+                
+                moodRecords.forEach(function(r) {
+                    var d = new Date(r.time).toDateString();
+                    if (dayCounts[d]) {
+                        var type = getMoodType(r.mood);
+                        dayCounts[d][type]++;
+                        dayCounts[d].total++;
+                    }
+                });
+                
+                // 计算最大值用于缩放
+                var maxTotal = 1;
+                days.forEach(function(d) {
+                    if (dayCounts[d.dateStr].total > maxTotal) maxTotal = dayCounts[d.dateStr].total;
+                });
+                
+                html += '<div class="chart-header"><div style="font-weight:600;">最近7天</div></div>';
+                html += '<div class="chart-emoji-row">';
+                
+                days.forEach(function(d, i) {
+                    var counts = dayCounts[d.dateStr];
+                    var isToday = i === 6;
+                    var height = Math.max(counts.total / maxTotal * 150, 30);
+                    
+                    // 找出当天最多的心情
+                    var mainMood = 'good';
+                    var maxCount = 0;
+                    ['sunny', 'good', 'normal', 'low'].forEach(function(t) {
+                        if (counts[t] > maxCount) { maxCount = counts[t]; mainMood = t; }
+                    });
+                    
+                    var dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+                    var dayName = dayNames[d.date.getDay()];
+                    
+                    html += '<div class="chart-bar-wrapper">';
+                    html += '<div class="chart-bar emoji-bar" style="height:' + height + 'px;background:' + (isToday ? 'linear-gradient(180deg,#667eea,#764ba2)' : 'linear-gradient(180deg,' + moodColors[mainMood] + ',' + moodColors[mainMood] + '99)') + ';">';
+                    if (counts.total > 0) {
+                        html += '<span class="chart-bar-label">' + moodEmojis[mainMood] + '</span>';
+                        html += '<span class="chart-bar-count">' + counts.total + '</span>';
+                    }
+                    html += '</div>';
+                    html += '<span class="chart-day">' + (isToday ? '今天' : '周' + dayName) + '</span>';
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                
+                // 统计卡片
+                var sunnyCount = 0, goodCount = 0, normalCount = 0, lowCount = 0;
+                moodRecords.forEach(function(r) {
+                    var type = getMoodType(r.mood);
+                    if (type === 'sunny') sunnyCount++;
+                    else if (type === 'good') goodCount++;
+                    else if (type === 'normal') normalCount++;
+                    else if (type === 'low') lowCount++;
+                });
+                
+                html += '<div class="chart-stats">';
+                html += '<div class="chart-stat"><div class="chart-stat-value">' + moodEmojis.sunny + ' ' + sunnyCount + '</div><div class="chart-stat-label">超棒时刻</div></div>';
+                html += '<div class="chart-stat"><div class="chart-stat-value">' + moodEmojis.good + ' ' + goodCount + '</div><div class="chart-stat-label">不错时光</div></div>';
+                html += '<div class="chart-stat"><div class="chart-stat-value">' + moodEmojis.normal + ' ' + normalCount + '</div><div class="chart-stat-label">平静日子</div></div>';
+                html += '<div class="chart-stat"><div class="chart-stat-value">' + moodEmojis.low + ' ' + lowCount + '</div><div class="chart-stat-label">需要关爱</div></div>';
+                html += '</div>';
+                
+                // 图例
+                html += '<div class="mood-legend">';
+                html += '<div class="legend-item"><span>' + moodEmojis.sunny + '</span> 超棒</div>';
+                html += '<div class="legend-item"><span>' + moodEmojis.good + '</span> 不错</div>';
+                html += '<div class="legend-item"><span>' + moodEmojis.normal + '</span> 一般</div>';
+                html += '<div class="legend-item"><span>' + moodEmojis.low + '</span> 低落</div>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            openModal('📊 心情趋势', html);
+        }
+        
+        // ============ 心情历史 ============
+        function showMoodHistory() {
+            var html = '<div class="history-list">';
+            if (moodRecords.length === 0) {
+                html += '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">还没有记录</div><div class="empty-desc">快去记录你的心情吧～</div></div>';
+            } else {
+                moodRecords.sort(function(a, b) { return new Date(b.time) - new Date(a.time); }).forEach(function(r) {
+                    var timeStr = formatTime(r.time);
+                    var emoji = getMoodEmoji(r.mood);
+                    var note = r.note || getMoodText(r.mood) || '';
+                    html += '<div class="history-item"><div class="history-time">' + timeStr + '</div><div class="history-mood">' + emoji + '</div><div class="history-note">' + note + '</div></div>';
+                });
+            }
+            html += '</div>';
+            openModal('📈 心情历史', html);
+        }
+        
+        // ============ 收到的关心 ============
+        function showWarmthHistory() {
+            var html = '<div class="history-list">';
+            if (warmthRecords.length === 0) {
+                html += '<div class="empty-state"><div class="empty-icon">💝</div><div class="empty-title">还没有收到关心</div><div class="empty-desc">去好友那里互动吧～</div></div>';
+            } else {
+                warmthRecords.sort(function(a, b) { return new Date(b.time) - new Date(a.time); }).forEach(function(r) {
+                    var timeStr = formatTime(r.time);
+                    html += '<div class="history-item"><div class="history-time">' + timeStr + '</div><div class="history-mood">' + r.icon + '</div><div class="history-note">' + r.from + ' ' + r.action + '</div></div>';
+                });
+            }
+            html += '</div>';
+            openModal('💝 收到的关心', html);
+        }
+        
+        // ============ 成就系统 ============
+        function showAchievements() {
+            var uniqueDays = new Set(moodRecords.map(function(r) { return new Date(r.time).toDateString(); })).size;
+            var achievements = [
+                { icon: '📝', name: '初次记录', desc: '记录第一条心情', unlocked: moodRecords.length >= 1 },
+                { icon: '🔥', name: '坚持记录', desc: '连续记录3天', unlocked: uniqueDays >= 3 },
+                { icon: '🌟', name: '记录达人', desc: '记录10次心情', unlocked: moodRecords.length >= 10 },
+                { icon: '💝', name: '温暖传递', desc: '收到关心', unlocked: warmthRecords.length >= 1 },
+                { icon: '🎨', name: '创意涂鸦', desc: '完成一次涂鸦', unlocked: false },
+                { icon: '🧘', name: '冥想新手', desc: '完成第一次冥想', unlocked: false }
+            ];
+            
+            var html = '<div>';
+            achievements.forEach(function(a) {
+                html += '<div class="achievement-item ' + (a.unlocked ? 'unlocked' : 'locked') + '">';
+                html += '<div class="achievement-icon">' + a.icon + '</div>';
+                html += '<div class="achievement-info"><div class="achievement-name">' + a.name + '</div><div class="achievement-desc">' + a.desc + '</div></div>';
+                html += '<div style="font-size:24px;color:' + (a.unlocked ? '#667eea' : '#ccc') + ';">' + (a.unlocked ? '✓' : '🔒') + '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+            openModal('🏆 我的成就', html);
+        }
+        
+        // ============ 头像修改 ============
+        function changeAvatar() {
+            document.getElementById('avatarInput').click();
+        }
+        
+        function handleAvatarChange(e) {
+            var file = e.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    userData.avatar = ev.target.result;
+                    saveUserData();
+                    document.getElementById('userAvatar').innerHTML = '<img src="' + ev.target.result + '"><div class="my-avatar-edit">📷</div>';
+                    showToast('头像已更新！');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // ============ 昵称修改 ============
+        function openEditNickname() {
+            var html = '<input type="text" style="width:100%;padding:14px;border:1px solid #e0e0e0;border-radius:12px;font-size:16px;margin-bottom:16px;" id="newNickname" placeholder="输入新昵称" value="' + userData.name + '" maxlength="10">';
+            html += '<div style="display:flex;gap:12px;">';
+            html += '<button style="flex:1;padding:14px;border:none;border-radius:12px;font-size:16px;cursor:pointer;background:#f5f7fa;color:#666;" onclick="closeModal()">取消</button>';
+            html += '<button style="flex:1;padding:14px;border:none;border-radius:12px;font-size:16px;cursor:pointer;background:linear-gradient(135deg,#667eea,#764ba2);color:white;" onclick="saveNickname()">保存</button>';
+            html += '</div>';
+            openModal('✏️ 修改昵称', html);
+        }
+        
+        function saveNickname() {
+            var newName = document.getElementById('newNickname').value.trim();
+            if (!newName) { showToast('请输入昵称'); return; }
+            userData.name = newName;
+            saveUserData();
+            document.getElementById('userName').textContent = newName;
+            document.getElementById('profileName').textContent = newName;
+            closeModal();
+            showToast('昵称已更新！');
+        }
+        
+        // ============ 好友 ============
+        function renderFriends() {
+            var html = '<div class="friend-card" style="background:linear-gradient(135deg,#f0f4ff,#e8eeff);">';
+            html += '<div class="friend-avatar">' + (userData.avatar ? '<img src="' + userData.avatar + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' : '😊') + '</div>';
+            html += '<div style="flex:1;"><div class="friend-name">' + userData.name + '（我）</div>';
+            html += '<div style="font-size:13color:#888;">' + (userData.currentMood ? userData.currentMood.text : '今天的心情') + '</div></div>';
+            html += '<div style="font-size:32px;">' + (userData.currentMood ? userData.currentMood.emoji : '🌤️') + '</div></div>';
+            
+            friends.forEach(function(f) {
+                html += '<div class="friend-card" onclick="openFriendDetail(\'' + f.id + '\')">';
+                html += '<div class="friend-avatar">' + f.avatar + '</div>';
+                html += '<div style="flex:1;"><div class="friend-name">' + f.name + '</div>';
+                html += '<div style="font-size:13px;color:#888;">' + f.moodText + '</div></div>';
+                html += '<div style="font-size:32px;">' + f.mood + '</div></div>';
+            });
+            document.getElementById('friendsList').innerHTML = html;
+        }
+        
+        // ============ 添加好友功能 ============
+        var allUsers = [
+            {id: 'u1', name: '小林', avatar: '🦊', email: 'lin@example.com', mood: '☀️', moodText: '今天超开心'},
+            {id: 'u2', name: '小华', avatar: '🐼', email: 'hua@example.com', mood: '🌤️', moodText: '还不错'},
+            {id: 'u3', name: 'Coco', avatar: '🐰', email: 'coco@xx.com', mood: '☁️', moodText: '有点累'},
+            {id: 'u4', name: 'Tony', avatar: '🦁', email: 'tony@xx.com', mood: '🌧️', moodText: '需要休息'}
+        ];
+        
+        function showAddFriend() {
+            var body = '<input type="text" class="search-input" id="friendSearchInput" placeholder="输入昵称或邮箱搜索" oninput="searchUsers()"><div id="searchResults" style="max-height:300px;overflow-y:auto;"></div>';
+            openModal('添加好友', body);
+        }
+        
+        function searchUsers() {
+            var q = document.getElementById('friendSearchInput').value.toLowerCase().trim();
+            var el = document.getElementById('searchResults');
+            if (!q) { el.innerHTML = ''; return; }
+            var found = allUsers.filter(function(u) {
+                return !friends.some(function(f) { return f.id === u.id; }) &&
+                    (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+            });
+            if (!found.length) { el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">未找到匹配用户</div>'; return; }
+            el.innerHTML = found.map(function(u) {
+                return '<div class="search-result" onclick="addFriendFromSearch(\'' + u.id + '\')">' +
+                    '<div class="search-avatar">' + u.avatar + '</div>' +
+                    '<div class="search-info"><div class="search-name">' + u.name + '</div><div class="search-email">' + u.email + '</div></div>' +
+                    '<button class="add-btn-small">添加</button></div>';
+            }).join('');
+        }
+        
+        function addFriendFromSearch(userId) {
+            var user = allUsers.find(function(u) { return u.id === userId; });
+            if (!user) return;
+            if (friends.some(function(f) { return f.id === userId; })) return;
+            friends.push({id: user.id, name: user.name, avatar: user.avatar, mood: user.mood, moodText: user.moodText, email: user.email});
+            closeModal();
+            renderFriends();
+            document.getElementById('statFriends').textContent = friends.length;
+            showToast('已添加 ' + user.name + '！');
+        }
+        
+        // ============ 心情分析功能 ============
+        var currentAnalysisType = 'day';
+        
+        function switchAnalysis(type, btn) {
+            currentAnalysisType = type;
+            document.querySelectorAll('.analysis-tab').forEach(function(e) { e.classList.remove('active'); });
+            if (btn) btn.classList.add('active');
+            renderAnalysis();
+        }
+        
+        // 心情量化分：超棒=4, 不错=3, 一般=2, 低落=1
+        function getMoodScore(mood) {
+            if (!mood) return 2;
+            var text = mood.text || '';
+            if (text === '超棒') return 4;
+            if (text === '不错') return 3;
+            if (text === '一般') return 2;
+            if (text === '低落') return 1;
+            return 2;
+        }
+        
+        function getMoodEmojiByText(text) {
+            var map = { '超棒': '☀️', '不错': '🌤️', '一般': '☁️', '低落': '🌧️' };
+            return map[text] || '🌤️';
+        }
+        
+        function getMoodColorByText(text) {
+            var map = { '超棒': '#ffd700', '不错': '#6bcb77', '一般': '#4d96ff', '低落': '#ff6b6b' };
+            return map[text] || '#999999';
+        }
+        
+        function getDayLabel(d, index) {
+            var days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            if (currentAnalysisType === 'day') {
+                return d.getHours() + '时';
+            }
+            if (currentAnalysisType === 'week') {
+                return days[d.getDay()];
+            }
+            return '第' + (index + 1) + '周';
+        }
+        
+        function buildTimeSlots() {
+            var now = new Date();
+            var slots = [];
+            if (currentAnalysisType === 'day') {
+                // 今日：每2小时一个槽，共12个
+                for (var h = 0; h < 24; h += 2) {
+                    var slotStart = new Date(now);
+                    slotStart.setHours(h, 0, 0, 0);
+                    var slotEnd = new Date(now);
+                    slotEnd.setHours(h + 2, 0, 0, 0);
+                    slots.push({ start: slotStart, end: slotEnd, label: h + '点', dayOfWeek: null });
+                }
+            } else if (currentAnalysisType === 'week') {
+                // 本周：周一到周日
+                var monday = new Date(now);
+                var day = monday.getDay();
+                var diff = day === 0 ? -6 : 1 - day;
+                monday.setDate(monday.getDate() + diff);
+                for (var i = 0; i < 7; i++) {
+                    var d = new Date(monday);
+                    d.setDate(monday.getDate() + i);
+                    var nd = new Date(d);
+                    nd.setHours(23, 59, 59, 999);
+                    slots.push({ start: d, end: nd, label: ['周一','周二','周三','周四','周五','周六','周日'][i], dayOfWeek: i });
+                }
+            } else {
+                // 本月：按周分组，约4-5个槽
+                var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+                for (var w = 0; w < 5; w++) {
+                    var ws = new Date(firstDay);
+                    ws.setDate(1 + w * 7);
+                    if (ws > now) break;
+                    var we = new Date(ws);
+                    we.setDate(we.getDate() + 6);
+                    if (we > now) we = now;
+                    slots.push({ start: ws, end: we, label: '第' + (w + 1) + '周', dayOfWeek: null });
+                }
+            }
+            return slots;
+        }
+        
+        function getRecordsForSlot(records, slot) {
+            return records.filter(function(r) {
+                var d = new Date(r.time);
+                return d >= slot.start && d <= slot.end;
+            });
+        }
+        
+        function avgScore(scores) {
+            if (!scores.length) return 0;
+            var sum = 0;
+            for (var i = 0; i < scores.length; i++) sum += scores[i];
+            return sum / scores.length;
+        }
+        
+        function scoreToY(score, height, padding) {
+            // score 1-4 map to bottom-top
+            var usable = height - padding * 2;
+            return padding + usable * (1 - (score - 1) / 3);
+        }
+        
+        function scoreToLabel(score) {
+            if (score >= 3.5) return '超棒';
+            if (score >= 2.5) return '不错';
+            if (score >= 1.5) return '一般';
+            return '低落';
+        }
+        
+        function renderAnalysis() {
+            var trendEl = document.getElementById('trendChart');
+            var pieEl = document.getElementById('pieChart');
+            var adviceEl = document.getElementById('adviceList');
+            if (!trendEl || !pieEl || !adviceEl) return;
+            
+            var now = new Date();
+            var records = moodRecords.filter(function(r) {
+                var d = new Date(r.time);
+                if (currentAnalysisType === 'day') return d.toDateString() === now.toDateString();
+                if (currentAnalysisType === 'week') {
+                    var w = new Date(now.getTime() - 7 * 86400000);
+                    return d >= w;
+                }
+                var m = new Date(now.getTime() - 30 * 86400000);
+                return d >= m;
+            });
+            
+            if (!records.length) {
+                trendEl.innerHTML = '<div class="no-data-hint">📝 记录心情后可查看趋势</div>';
+                pieEl.innerHTML = '<div class="no-data-hint">暂无数据</div>';
+                adviceEl.innerHTML = '<div class="no-data-hint">开始记录心情，我会为你生成建议</div>';
+                document.getElementById('trendLabels').innerHTML = '';
+                return;
+            }
+            
+            // ===== 1. 渲染折线图 =====
+            var slots = buildTimeSlots();
+            var slotData = [];
+            for (var si = 0; si < slots.length; si++) {
+                var recs = getRecordsForSlot(records, slots[si]);
+                var scores = recs.map(function(r) { return getMoodScore(r.mood); });
+                var avg = avgScore(scores);
+                var lastRec = recs.length > 0 ? recs[recs.length - 1] : null;
+                slotData.push({
+                    slot: slots[si],
+                    avg: avg,
+                    count: recs.length,
+                    lastMood: lastRec ? lastRec.mood : null,
+                    scores: scores
+                });
+            }
+            
+            var W = 340, H = 160, padL = 30, padR = 10, padT = 20, padB = 20;
+            var chartW = W - padL - padR;
+            var chartH = H - padT - padB;
+            
+            var xStep = slots.length > 1 ? chartW / (slots.length - 1) : chartW / 2;
+            
+            var points = [];
+            var hasPoint = [];
+            for (var pi = 0; pi < slotData.length; pi++) {
+                if (slotData[pi].avg > 0) {
+                    var x = padL + pi * xStep;
+                    var y = scoreToY(slotData[pi].avg, H, padT);
+                    points.push({ x: x, y: y, d: slotData[pi] });
+                    hasPoint.push(pi);
+                }
+            }
+            
+            // 生成折线和填充
+            var polyline = '';
+            var areaPath = '';
+            if (points.length >= 2) {
+                var pathPoints = points.map(function(p) { return p.x + ',' + p.y; });
+                polyline = '<polyline points="' + pathPoints.join(' ') + '" fill="none" stroke="#667eea" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+                var firstX = points[0].x, lastX = points[points.length - 1].x;
+                var firstY = points[0].y, lastY = points[points.length - 1].y;
+                areaPath = '<polygon points="' + firstX + ',' + (H - padB) + ' ' + pathPoints.join(' ') + ' ' + lastX + ',' + (H - padB) + '" fill="url(#areaGrad)" opacity="0.3"/>';
+            }
+            
+            var gridLines = '';
+            var yLabels = [4, 3, 2, 1];
+            var yLabelTexts = ['超棒', '不错', '一般', '低落'];
+            for (var gi = 0; gi < yLabels.length; gi++) {
+                var gy = scoreToY(yLabels[gi], H, padT);
+                gridLines += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" stroke="#eee" stroke-width="1"/>';
+                gridLines += '<text x="' + (padL - 4) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="10" fill="#aaa">' + yLabelTexts[gi] + '</text>';
+            }
+            
+            var circles = '';
+            for (var ci = 0; ci < points.length; ci++) {
+                var p = points[ci];
+                var emoji = p.d.lastMood && p.d.lastMood.emoji ? p.d.lastMood.emoji : '🌤️';
+                var color = getMoodColorByText(p.d.lastMood && p.d.lastMood.text ? p.d.lastMood.text : '');
+                circles += '<circle cx="' + p.x + '" cy="' + p.y + '" r="6" fill="' + color + '" stroke="white" stroke-width="2"/>';
+                circles += '<text x="' + p.x + '" y="' + (p.y + 4) + '" text-anchor="middle" font-size="10">' + emoji + '</text>';
+            }
+            
+            var svg = '<svg class="trend-svg" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+                '<defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">' +
+                '<stop offset="0%" stop-color="#667eea" stop-opacity="0.5"/>' +
+                '<stop offset="100%" stop-color="#667eea" stop-opacity="0.05"/></linearGradient></defs>' +
+                gridLines + areaPath + polyline + circles + '</svg>';
+            
+            trendEl.innerHTML = svg;
+            
+            // 横轴标签
+            var labelsHtml = '<span></span>'; // left padding
+            for (var li = 0; li < slots.length; li++) {
+                if (currentAnalysisType === 'day') {
+                    labelsHtml += '<span style="flex:1;text-align:center;">' + slots[li].label + '</span>';
+                } else {
+                    labelsHtml += '<span style="flex:1;text-align:center;">' + slots[li].label + '</span>';
+                }
+            }
+            document.getElementById('trendLabels').innerHTML = labelsHtml;
+            
+            // ===== 2. 渲染饼图 =====
+            var moodCounts = { '超棒': 0, '不错': 0, '一般': 0, '低落': 0 };
+            for (var mi = 0; mi < records.length; mi++) {
+                var txt = records[mi].mood && records[mi].mood.text ? records[mi].mood.text : '一般';
+                if (moodCounts.hasOwnProperty(txt)) moodCounts[txt]++;
+                else moodCounts['一般']++;
+            }
+            var totalCount = records.length;
+            var pieParts = [], legendItems = [], startDeg = 0;
+            Object.keys(moodCounts).forEach(function(k) {
+                if (moodCounts[k] === 0) return;
+                var deg = (moodCounts[k] / totalCount) * 360;
+                pieParts.push(getMoodColorByText(k) + ' ' + startDeg + 'deg ' + (startDeg + deg) + 'deg');
+                var pct = Math.round((moodCounts[k] / totalCount) * 100);
+                legendItems.push({
+                    color: getMoodColorByText(k),
+                    emoji: getMoodEmojiByText(k),
+                    name: k,
+                    count: moodCounts[k],
+                    pct: pct,
+                    bar: (moodCounts[k] / totalCount * 100)
+                });
+                startDeg += deg;
+            });
+            
+            var lastRec = records[records.length - 1];
+            var pieEmoji = lastRec && lastRec.mood && lastRec.mood.emoji ? lastRec.mood.emoji : '🌤️';
+            var pieColor = getMoodColorByText(lastRec && lastRec.mood && lastRec.mood.text ? lastRec.mood.text : '');
+            
+            var pieHtml = '<div class="pie-ring" style="background:conic-gradient(' + pieParts.join(',') + ');">' +
+                '<div class="pie-center" style="background:linear-gradient(135deg,' + pieColor + '22,' + pieColor + '44);">' +
+                '<span style="font-size:22px;">' + pieEmoji + '</span></div></div>';
+            
+            pieHtml += '<div class="pie-legend">';
+            for (var li2 = 0; li2 < legendItems.length; li2++) {
+                var item = legendItems[li2];
+                pieHtml += '<div class="pie-legend-item">' +
+                    '<span style="font-size:14px;">' + item.emoji + '</span>' +
+                    '<span style="flex:0 0 32px;font-size:12px;color:#555;">' + item.name + '</span>' +
+                    '<div class="pie-legend-bar"><div class="pie-legend-fill" style="width:' + item.bar + '%;background:' + item.color + ';"></div></div>' +
+                    '<span class="pie-legend-pct">' + item.pct + '%</span></div>';
+            }
+            pieHtml += '</div>';
+            pieEl.innerHTML = pieHtml;
+            
+            // ===== 3. 生成智能建议 =====
+            var advice = generateAdvice(records, slotData, moodCounts, totalCount);
+            var adviceHtml = '';
+            for (var ai = 0; ai < advice.length; ai++) {
+                var a = advice[ai];
+                var tagClass = 'tag-' + (a.tag === '积极' ? 'great' : a.tag === '温馨' ? 'good' : a.tag === '关注' ? 'normal' : 'low');
+                adviceHtml += '<div class="advice-item">' +
+                    '<div class="advice-icon">' + a.icon + '</div>' +
+                    '<div>' +
+                    '<div class="advice-text">' + a.text + '</div>' +
+                    '<span class="advice-tag ' + tagClass + '">' + a.tag + '</span>' +
+                    '</div></div>';
+            }
+            adviceEl.innerHTML = adviceHtml;
+        }
+        
+        function generateAdvice(records, slotData, moodCounts, totalCount) {
+            var advice = [];
+            var avg = 0, sum = 0, count = 0;
+            for (var i = 0; i < records.length; i++) {
+                sum += getMoodScore(records[i].mood);
+                count++;
+            }
+            avg = count > 0 ? sum / count : 0;
+            
+            // 全局统计
+            var lowCount = moodCounts['低落'] || 0;
+            var greatCount = moodCounts['超棒'] || 0;
+            var normalCount = moodCounts['一般'] || 0;
+            var goodCount = moodCounts['不错'] || 0;
+            var lowRatio = lowCount / totalCount;
+            
+            // 趋势分析
+            var trend = null;
+            if (slotData.length >= 3) {
+                var firstHalf = 0, firstN = 0, secondHalf = 0, secondN = 0;
+                var mid = Math.floor(slotData.length / 2);
+                for (var t1 = 0; t1 < mid; t1++) { if (slotData[t1].avg > 0) { firstHalf += slotData[t1].avg; firstN++; } }
+                for (var t2 = mid; t2 < slotData.length; t2++) { if (slotData[t2].avg > 0) { secondHalf += slotData[t2].avg; secondN++; } }
+                var fAvg = firstN > 0 ? firstHalf / firstN : 0;
+                var sAvg = secondN > 0 ? secondHalf / secondN : 0;
+                if (fAvg > 0 && sAvg > 0) {
+                    if (sAvg - fAvg > 0.5) trend = 'up';
+                    else if (fAvg - sAvg > 0.5) trend = 'down';
+                    else trend = 'stable';
+                }
+            }
+            
+            // 建议生成
+            if (avg >= 3.5) {
+                advice.push({ icon: '🎉', text: '太棒了！' + records.length + '条记录中，你的心情普遍很好，继续保持这份好状态！', tag: '积极' });
+            } else if (avg >= 2.5) {
+                if (lowRatio > 0.2) {
+                    advice.push({ icon: '💪', text: '总体不错，但有几天情绪偏低落。别忘了每天给自己一点放松时间，哪怕只是深呼吸～', tag: '关注' });
+                } else {
+                    advice.push({ icon: '✨', text: '心情状态良好！继续保持规律作息和适度运动，你会感觉更好～', tag: '积极' });
+                }
+            } else if (avg >= 1.5) {
+                advice.push({ icon: '🌸', text: '最近心情有点沉重，别太勉强自己。试试做点喜欢的事：听音乐、散步、找朋友聊聊', tag: '关注' });
+                if (lowRatio > 0.4) {
+                    advice.push({ icon: '🤗', text: '低落的心情占比较多，建议安排一些能带来小确幸的事：喝杯热饮、泡个澡、整理房间', tag: '温馨' });
+                }
+            } else {
+                advice.push({ icon: '🫂', text: '我在这里陪着你。低落的日子不会太久，记得你并不孤单，必要时可以寻求专业支持', tag: '关注' });
+                advice.push({ icon: '🎵', text: '试着听一些舒缓的音乐，或者出门晒晒太阳，这些小事往往有意想不到的效果', tag: '温馨' });
+            }
+            
+            // 趋势建议
+            if (trend === 'up') {
+                advice.push({ icon: '📈', text: '心情趋势在上升！继续保持近期的习惯，你正在越变越好', tag: '积极' });
+            } else if (trend === 'down') {
+                advice.push({ icon: '⚠️', text: '注意到近期心情有下降趋势，建议回顾一下是什么因素影响了情绪，有针对性地调整', tag: '关注' });
+            }
+            
+            // 时间规律
+            var morning = 0, morningN = 0, afternoon = 0, afternoonN = 0, evening = 0, eveningN = 0;
+            for (var ri = 0; ri < records.length; ri++) {
+                var h = new Date(records[ri].time).getHours();
+                var s = getMoodScore(records[ri].mood);
+                if (h < 12) { morning += s; morningN++; }
+                else if (h < 18) { afternoon += s; afternoonN++; }
+                else { evening += s; eveningN++; }
+            }
+            var mAvg = morningN > 0 ? morning / morningN : 0;
+            var aAvg = afternoonN > 0 ? afternoon / afternoonN : 0;
+            var eAvg = eveningN > 0 ? evening / eveningN : 0;
+            
+            if (morningN >= 2 && morningN >= afternoonN && morningN >= eveningN) {
+                if (mAvg >= aAvg && mAvg >= eAvg) {
+                    advice.push({ icon: '🌅', text: '你上午的精神状态最好！重要的事情可以安排在上午进行', tag: '积极' });
+                } else if (mAvg <= aAvg && mAvg <= eAvg) {
+                    advice.push({ icon: '☕', text: '上午感觉不太在状态？试试早起后喝杯温水，做5分钟伸展，给自己一个轻松的早晨', tag: '温馨' });
+                }
+            }
+            if (afternoonN >= 2 && aAvg > mAvg + 0.5 && aAvg > eAvg + 0.5) {
+                advice.push({ icon: '🌤️', text: '下午反而是你状态最好的时段！如果有午休习惯，说明休息对你很有效', tag: '积极' });
+            }
+            if (eveningN >= 2 && eAvg < mAvg - 0.5 && eAvg < aAvg - 0.5) {
+                advice.push({ icon: '🌙', text: '晚上心情容易变差，可能是白天太累了。试试睡前1小时远离手机，做点放松的事', tag: '温馨' });
+            }
+            
+            // 连续记录提醒
+            if (records.length >= 5 && totalCount >= 5) {
+                advice.push({ icon: '🎯', text: '你已经记录了' + totalCount + '条心情，继续坚持！数据越多，分析越准确', tag: '积极' });
+            }
+            
+            return advice.slice(0, 4); // 最多4条
+        }
+        
+        function openFriendDetail(fid) {
+            var friend = friends.find(function(f) { return f.id === fid; });
+            if (!friend) return;
+            
+            var html = '<div style="text-align:center;padding:20px 0;">';
+            html += '<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:40px;">' + friend.avatar + '</div>';
+            html += '<div style="font-size:20px;font-weight:600;">' + friend.name + '</div>';
+            html += '<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(102,126,234,0.1);padding:8px 16px;border-radius:20px;margin-top:8px;">';
+            html += '<span style="font-size:24px;">' + friend.mood + '</span><span>' + friend.moodText + '</span></div></div>';
+            html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:16px;">';
+            html += '<button onclick="sendWarmth(\'hug\',\'' + friend.name + '\')" style="padding:16px;background:#f8f9fa;border:none;border-radius:16px;cursor:pointer;"><div style="font-size:32px;margin-bottom:8px;">🤗</div><div>抱抱</div></button>';
+            html += '<button onclick="sendWarmth(\'flower\',\'' + friend.name + '\')" style="padding:16px;background:#f8f9fa;border:none;border-radius:16px;cursor:pointer;"><div style="font-size:32px;margin-bottom:8px;">🌸</div><div>送花</div></button>';
+            html += '<button onclick="sendWarmth(\'tea\',\'' + friend.name + '\')" style="padding:16px;background:#f8f9fa;border:none;border-radius:16px;cursor:pointer;"><div style="font-size:32px;margin-bottom:8px;">🧋</div><div>奶茶</div></button>';
+            html += '<button onclick="openChat(\'' + friend.id + '\',\'' + friend.name + '\',\'' + friend.avatar + '\')" style="padding:16px;background:#f8f9fa;border:none;border-radius:16px;cursor:pointer;"><div style="font-size:32px;margin-bottom:8px;">💬</div><div>陪聊</div></button>';
+            html += '</div>';
+            openModal('💝 ' + friend.name, html);
+        }
+        
+        // ============ 送温暖动画 ============
+        function sendWarmth(type, friendName) {
+            var actions = {
+                hug: { icon: '🤗', text: '给了你一个温暖的抱抱' },
+                flower: { icon: '🌸', text: '送给你一束美丽的花' },
+                tea: { icon: '🧋', text: '请你喝了一杯奶茶' }
+            };
+            var action = actions[type];
+            closeModal();
+            playAnimation(type);
+            
+            setTimeout(function() {
+                showToast('你向 ' + friendName + ' ' + action.text + '！');
+                if (Math.random() > 0.5) {
+                    setTimeout(function() {
+                        warmthRecords.push({ from: friendName, icon: action.icon, action: action.text, time: new Date().toISOString() });
+                        localStorage.setItem('warmthRecords', JSON.stringify(warmthRecords));
+                        showToast(friendName + ' 也向你' + action.text + '！💕');
+                        updateStats();
+                    }, 2000);
+                }
+            }, 500);
+        }
+        
+        function playAnimation(type) {
+            var overlay = document.getElementById('animationOverlay');
+            overlay.classList.add('active');
+            
+            if (type === 'hug') {
+                overlay.innerHTML = '<div class="hug-animation">🤗💕</div>';
+                setTimeout(function() { overlay.classList.remove('active'); }, 1500);
+            } else if (type === 'flower') {
+                var petals = '';
+                var flowers = ['🌸', '🌺', '🌷', '💐', '🌹'];
+                for (var i = 0; i < 20; i++) {
+                    petals += '<div class="flower-petal" style="left:' + (Math.random() * 100) + '%;animation-delay:' + Math.random() + 's;">' + flowers[Math.floor(Math.random() * flowers.length)] + '</div>';
+                }
+                overlay.innerHTML = petals;
+                setTimeout(function() { overlay.classList.remove('active'); }, 3000);
+            } else if (type === 'tea') {
+                overlay.innerHTML = '<div class="bubble-tea">🧋</div>';
+                setTimeout(function() { overlay.classList.remove('active'); }, 2000);
+            }
+        }
+        
+        // ============ 聊天 ============
+        function openChat(fid, name, avatar) {
+            if (!chatHistory[fid]) {
+                chatHistory[fid] = [{ from: name, avatar: avatar, text: '嗨～最近怎么样呀？' }];
+            }
+            
+            var msgHtml = '';
+            chatHistory[fid].forEach(function(m) {
+                var isSelf = !m.from;
+                msgHtml += '<div class="chat-message ' + (isSelf ? 'self' : '') + '">';
+                msgHtml += (!isSelf ? '<div class="chat-avatar">' + m.avatar + '</div>' : '');
+                msgHtml += '<div class="chat-bubble">' + m.text + '</div>';
+                msgHtml += (isSelf ? '<div class="chat-avatar">😊</div>' : '');
+                msgHtml += '</div>';
+            });
+            
+            var html = '<div class="chat-container">';
+            html += '<div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #eee;margin-bottom:16px;">';
+            html += '<div class="chat-avatar" style="margin-right:12px;">' + avatar + '</div>';
+            html += '<div><div style="font-weight:600;">' + name + '</div><div style="font-size:12px;color:#888;">在线</div></div></div>';
+            html += '<div class="chat-messages" id="chatMessages">' + msgHtml + '</div>';
+            html += '<div class="chat-input-area">';
+            html += '<input type="text" class="chat-input" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key===\'Enter\')sendChatMsg(\'' + fid + '\',\'' + name + '\',\'' + avatar + '\')">';
+            html += '<button class="chat-send-btn" onclick="sendChatMsg(\'' + fid + '\',\'' + name + '\',\'' + avatar + '\')">➤</button></div></div>';
+            
+            openModal('💬 和 ' + name + ' 聊天', html);
+            setTimeout(function() {
+                var c = document.getElementById('chatMessages');
+                if (c) c.scrollTop = c.scrollHeight;
+            }, 100);
+        }
+        
+        function sendChatMsg(fid, name, avatar) {
+            var input = document.getElementById('chatInput');
+            var text = input.value.trim();
+            if (!text) return;
+            
+            chatHistory[fid].push({ text: text });
+            input.value = '';
+            
+            var msgHtml = '';
+            chatHistory[fid].forEach(function(m) {
+                var isSelf = !m.from;
+                msgHtml += '<div class="chat-message ' + (isSelf ? 'self' : '') + '">';
+                msgHtml += (!isSelf ? '<div class="chat-avatar">' + (m.avatar || '😊') + '</div>' : '');
+                msgHtml += '<div class="chat-bubble">' + m.text + '</div>';
+                msgHtml += (isSelf ? '<div class="chat-avatar">😊</div>' : '');
+                msgHtml += '</div>';
+            });
+            document.getElementById('chatMessages').innerHTML = msgHtml;
+            
+            setTimeout(function() {
+                var replies = ['收到啦～', '好哒！', '哈哈哈', '嗯嗯', '❤️', '抱抱你', '我也这么觉得～'];
+                chatHistory[fid].push({ from: name, avatar: avatar, text: replies[Math.floor(Math.random() * replies.length)] });
+                sendChatMsg(fid, name, avatar);
+            }, 1000);
+        }
+        
+        // ============ 工具箱 ============
+        function openTool(tool) {
+            var body = document.getElementById('modalBody');
+            document.getElementById('modal').classList.add('active');
+            
+            if (tool === 'breathe') {
+                document.getElementById('modalTitle').textContent = '🫁 深呼吸';
+                body.innerHTML = '<div style="text-align:center;padding:20px;"><div class="breathing-circle" id="breatheCircle">吸气</div><p style="color:#666;margin-top:20px;">跟着圆圈一起呼吸<br>吸气4秒 → 屏息4秒 → 呼气4秒</p></div>';
+                var phase = 0;
+                var texts = ['吸气', '屏息', '呼气'];
+                breatheInterval = setInterval(function() {
+                    var c = document.getElementById('breatheCircle');
+                    if (c) { phase = (phase + 1) % 3; c.textContent = texts[phase]; }
+                }, 4000);
+                
+            } else if (tool === 'sounds') {
+                document.getElementById('modalTitle').textContent = '🎵 白噪音';
+                body.innerHTML = '<div style="padding:16px;"><div class="sound-grid">' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'雨声\')"><div class="sound-icon">🌧️</div><div class="sound-label">雨声</div></div>' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'海浪\')"><div class="sound-icon">🌊</div><div class="sound-label">海浪</div></div>' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'森林\')"><div class="sound-icon">🌲</div><div class="sound-label">森林</div></div>' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'篝火\')"><div class="sound-icon">🔥</div><div class="sound-label">篝火</div></div>' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'微风\')"><div class="sound-icon">🍃</div><div class="sound-label">微风</div></div>' +
+                    '<div class="sound-btn" onclick="selectSound(this,\'夜晚\')"><div class="sound-icon">🌙</div><div class="sound-label">夜晚</div></div>' +
+                    '</div><p style="text-align:center;color:#888;font-size:13px;margin-top:16px;">点击播放/暂停</p></div>';
+                    
+            } else if (tool === 'games') {
+                document.getElementById('modalTitle').textContent = '🎮 解压游戏';
+                body.innerHTML = '<div style="padding:16px;"><div class="game-tabs">' +
+                    '<div class="game-tab active" onclick="switchGame(\'bubble\',this)">戳泡泡</div>' +
+                    '<div class="game-tab" onclick="switchGame(\'stress\',this)">解压球</div>' +
+                    '<div class="game-tab" onclick="switchGame(\'scratch\',this)">刮刮乐</div>' +
+                    '<div class="game-tab" onclick="switchGame(\'count\',this)">数羊</div>' +
+                    '</div><div class="game-container" id="gameContainer"></div></div>';
+                switchGame('bubble', document.querySelector('.game-tab'));
+                
+            } else if (tool === 'zen') {
+                document.getElementById('modalTitle').textContent = '🧘 冥想';
+                body.innerHTML = '<div style="text-align:center;padding:30px;"><div style="font-size:60px;margin-bottom:20px;">🧘</div>' +
+                    '<div id="zenTimer" style="font-size:48px;font-weight:700;color:#667eea;margin:20px 0;">05:00</div>' +
+                    '<button onclick="startZen()" style="padding:16px 40px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:30px;font-size:18px;cursor:pointer;">开始冥想</button>' +
+                    '<p style="color:#888;margin-top:20px;font-size:14px;">闭上眼睛，深呼吸<br>让思绪慢慢平静下来</p></div>';
+                    
+            } else if (tool === 'quotes') {
+                document.getElementById('modalTitle').textContent = '💭 正能量语录';
+                body.innerHTML = '<div style="padding:16px;"><div class="quote-card">' +
+                    '<div class="quote-text" id="quoteText"></div>' +
+                    '<div class="quote-author" id="quoteAuthor"></div>' +
+                    '<div style="display:flex;justify-content:center;gap:12px;margin-top:20px;">' +
+                    '<button style="padding:10px 20px;border:none;border-radius:20px;cursor:pointer;background:#f5f5f5;" onclick="prevQuote()">← 上一句</button>' +
+                    '<button style="padding:10px 20px;border:none;border-radius:20px;cursor:pointer;background:linear-gradient(135deg,#667eea,#764ba2);color:white;" onclick="nextQuote()">下一句 →</button>' +
+                    '</div><div class="quote-dots" id="quoteDots"></div></div></div>';
+                initQuotes();
+                
+            } else if (tool === 'doodle') {
+                document.getElementById('modalTitle').textContent = '🎨 涂鸦板';
+                body.innerHTML = '<div style="padding:16px;">' +
+                    '<div class="doodle-container" id="doodleContainer">' +
+                    '<canvas id="doodleCanvas" class="doodle-canvas" width="320" height="200"></canvas>' +
+                    '</div>' +
+                    '<div class="doodle-tools">' +
+                    '<div class="color-btn active" style="background:#333;" onclick="setDoodleColor(\'#333\',this)"></div>' +
+                    '<div class="color-btn" style="background:#667eea;" onclick="setDoodleColor(\'#667eea\',this)"></div>' +
+                    '<div class="color-btn" style="background:#ff6b6b;" onclick="setDoodleColor(\'#ff6b6b\',this)"></div>' +
+                    '<div class="color-btn" style="background:#1dd1a1;" onclick="setDoodleColor(\'#1dd1a1\',this)"></div>' +
+                    '<div class="color-btn" style="background:#feca57;" onclick="setDoodleColor(\'#feca57\',this)"></div>' +
+                    '<div class="color-btn" style="background:#ff9ff3;" onclick="setDoodleColor(\'#ff9ff3\',this)"></div>' +
+                    '<button class="tool-btn" onclick="setDoodleEraser()">橡皮</button>' +
+                    '<button class="tool-btn" style="background:#ff6b6b;color:white;" onclick="clearDoodle()">清空</button>' +
+                    '</div>' +
+                    '<div style="margin-top:12px;"><div style="font-size:12px;color:#888;margin-bottom:8px;">画笔粗细</div>' +
+                    '<input type="range" id="doodleBrushSize" min="2" max="20" value="5" style="width:100%;"></div>' +
+                    '<div style="margin-top:16px;"><div style="font-size:12px;color:#888;margin-bottom:8px;">贴纸（点击添加，可拖动）</div>' +
+                    '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;">' +
+                    '<span class="sticker-item" onclick="addSticker(\'⭐\')">⭐</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'💖\')">💖</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🌸\')">🌸</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'☀️\')">☀️</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🌈\')">🌈</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🎈\')">🎈</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'💪\')">💪</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🎉\')">🎉</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🍀\')">🍀</span>' +
+                    '<span class="sticker-item" onclick="addSticker(\'🔥\')">🔥</span>' +
+                    '</div></div></div>';
+                setTimeout(initDoodle, 100);
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+            if (breatheInterval) clearInterval(breatheInterval);
+            if (zenInterval) clearInterval(zenInterval);
+        }
+        
+        function openModal(title, body) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').innerHTML = body;
+            document.getElementById('modal').classList.add('active');
+        }
+        
+        // 白噪音
+        function selectSound(el, name) {
+            document.querySelectorAll('.sound-btn').forEach(function(b) { b.classList.remove('active'); });
+            el.classList.add('active');
+            showToast('播放 ' + name + ' 🎵');
+        }
+        
+        // 冥想
+        function startZen() {
+            var time = 300;
+            zenInterval = setInterval(function() {
+                time--;
+                var m = Math.floor(time / 60).toString().padStart(2, '0');
+                var s = (time % 60).toString().padStart(2, '0');
+                var el = document.getElementById('zenTimer');
+                if (el) el.textContent = m + ':' + s;
+                if (time <= 0) { clearInterval(zenInterval); showToast('冥想完成！🧘'); }
+            }, 1000);
+        }
+        
+        // ============ 游戏 ============
+        var gameScore = 0, stressCount = 0, sheepCount = 0;
+        
+        function switchGame(game, tab) {
+            document.querySelectorAll('.game-tab').forEach(function(t) { t.classList.remove('active'); });
+            tab.classList.add('active');
+            var container = document.getElementById('gameContainer');
+            
+            if (game === 'bubble') {
+                gameScore = 0;
+                var colors = ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1', '#5f27cd', '#ff9ff3', '#54a0ff', '#00d2d3'];
+                var html = '<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">';
+                for (var i = 0; i < 16; i++) {
+                    html += '<div onclick="popBubble(this)" style="width:50px;height:50px;border-radius:50%;background:' + colors[i % colors.length] + ';cursor:pointer;transition:all 0.2s;"></div>';
+                }
+                html += '</div><div style="text-align:center;margin-top:12px;color:#666;">已戳破: <span id="bubbleScore">0</span> 个</div>';
+                container.innerHTML = html;
+                
+            } else if (game === 'stress') {
+                stressCount = 0;
+                container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                    '<div onclick="squeezeBall()" id="stressBall" style="width:100px;height:100px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#ff9a9e,#fecfef,#feada6);margin:20px auto;cursor:pointer;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;box-shadow:0 8px 24px rgba(255,154,158,0.4);">捏捏我</div>' +
+                    '<div style="color:#888;">连续点击释放压力</div>' +
+                    '<div style="color:#667eea;font-weight:600;margin-top:8px;">已捏 <span id="stressNum">0</span> 次</div></div>';
+                    
+            } else if (game === 'scratch') {
+                var prizes = ['🎉 中奖了！', '🌸 美好的一天', '💖 你是最棒的', '⭐ 好运连连', '🎁 惊喜礼包'];
+                container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                    '<div onclick="this.querySelector(\'#scratchCover\').style.display=\'none\';this.querySelector(\'#scratchPrize\').style.display=\'block\';" style="width:240px;height:140px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;margin:20px auto;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;">' +
+                    '<div id="scratchCover" style="position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#ffd700,#ffaa00);display:flex;align-items:center;justify-content:center;font-size:36px;"></div>' +
+                    '<div id="scratchPrize" style="color:white;font-size:20px;font-weight:600;display:none;">' + prizes[Math.floor(Math.random() * prizes.length)] + '</div></div>' +
+                    '<div style="color:#888;">点击刮开看看惊喜！</div></div>';
+                    
+            } else if (game === 'count') {
+                sheepCount = 0;
+                container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                    '<div id="sheepDisplay" style="font-size:80px;margin:20px 0;">🐑</div>' +
+                    '<div style="font-size:32px;font-weight:700;color:#667eea;margin:20px 0;"><span id="sheepNum">0</span> 只羊</div>' +
+                    '<button onclick="countSheep()" style="padding:16px 40px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:20px;font-size:18px;cursor:pointer;">数一只羊 🐑</button>' +
+                    '<p style="color:#888;margin-top:16px;font-size:14px;">慢慢数，放松心情～</p></div>';
+            }
+        }
+        
+        function popBubble(el) {
+            if (el.style.opacity === '0') return;
+            el.style.opacity = '0';
+            el.style.transform = 'scale(1.5)';
+            gameScore++;
+            document.getElementById('bubbleScore').textContent = gameScore;
+            setTimeout(function() { el.style.opacity = '1'; el.style.transform = 'scale(1)'; }, 800);
+        }
+        
+        function squeezeBall() {
+            stressCount++;
+            document.getElementById('stressNum').textContent = stressCount;
+            var ball = document.getElementById('stressBall');
+            ball.style.transform = 'scale(0.9)';
+            setTimeout(function() { ball.style.transform = 'scale(1)'; }, 100);
+        }
+        
+        function countSheep() {
+            sheepCount++;
+            document.getElementById('sheepNum').textContent = sheepCount;
+            var display = document.getElementById('sheepDisplay');
+            display.style.transform = 'translateX(100px) scale(1.2)';
+            setTimeout(function() {
+                display.style.transform = 'translateX(-100px)';
+                setTimeout(function() {
+                    display.style.transform = 'translateX(0) scale(1)';
+                }, 200);
+            }, 200);
+        }
+        
+        // ============ 语录 ============
+        var quotes = [
+            { text: "每一天都是新的开始", author: "励志" },
+            { text: "你比自己想象的更强大", author: "自信" },
+            { text: "今天的不开心就止于此吧", author: "释然" },
+            { text: "万物皆有裂痕，那是光照进来的地方", author: "科恩" },
+            { text: "允许自己慢下来，这是休息不是懈怠", author: "关怀" },
+            { text: "你的感受很重要，值得被认真对待", author: "理解" },
+            { text: "今天辛苦了，你已经做得很好", author: "鼓励" },
+            { text: "每一次深呼吸，都是对自己的爱", author: "正念" },
+            { text: "你值得世间所有美好的事物", author: "肯定" },
+            { text: "无论今天发生什么，你依然值得被爱", author: "温暖" }
+        ];
+        var quoteIdx = 0;
+        
+        function initQuotes() {
+            var dots = document.getElementById('quoteDots');
+            if (!dots) return;
+            dots.innerHTML = quotes.map(function(_, i) { return '<div class="quote-dot ' + (i === 0 ? 'active' : '') + '" onclick="goQuote(' + i + ')"></div>'; }).join('');
+            updateQuote();
+        }
+        
+        function updateQuote() {
+            var text = document.getElementById('quoteText');
+            var author = document.getElementById('quoteAuthor');
+            if (!text) return;
+            text.textContent = '"' + quotes[quoteIdx].text + '"';
+            author.textContent = '— ' + quotes[quoteIdx].author;
+            document.querySelectorAll('.quote-dot').forEach(function(d, i) { d.classList.toggle('active', i === quoteIdx); });
+        }
+        
+        function prevQuote() { quoteIdx = (quoteIdx - 1 + quotes.length) % quotes.length; updateQuote(); }
+        function nextQuote() { quoteIdx = (quoteIdx + 1) % quotes.length; updateQuote(); }
+        function goQuote(i) { quoteIdx = i; updateQuote(); }
+        
+        // ============ 涂鸦板（支持贴纸拖动）============
+        var doodleCtx, doodleColor = '#333', doodleIsDrawing = false, isEraser = false;
+        var placedStickers = [];
+        var draggedSticker = null;
+        var dragOffset = { x: 0, y: 0 };
+        
+        function initDoodle() {
+            var canvas = document.getElementById('doodleCanvas');
+            var container = document.getElementById('doodleContainer');
+            if (!canvas || !container) return;
+            
+            doodleCtx = canvas.getContext('2d');
+            doodleCtx.fillStyle = 'white';
+            doodleCtx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 画笔事件
+            canvas.addEventListener('mousedown', function(e) { doodleIsDrawing = true; doodleDraw(e); });
+            canvas.addEventListener('mouseup', function() { doodleIsDrawing = false; });
+            canvas.addEventListener('mousemove', doodleDraw);
+            canvas.addEventListener('touchstart', function(e) { doodleIsDrawing = true; doodleDraw(e.touches[0]); });
+            canvas.addEventListener('touchend', function() { doodleIsDrawing = false; });
+            canvas.addEventListener('touchmove', function(e) { e.preventDefault(); doodleDraw(e.touches[0]); });
+        }
+        
+        function doodleDraw(e) {
+            if (!doodleIsDrawing || !doodleCtx) return;
+            var canvas = document.getElementById('doodleCanvas');
+            var rect = canvas.getBoundingClientRect();
+            var brushSize = document.getElementById('doodleBrushSize') ? document.getElementById('doodleBrushSize').value : 5;
+            var x = (e.clientX || e.pageX) - rect.left;
+            var y = (e.clientY || e.pageY) - rect.top;
+            doodleCtx.beginPath();
+            doodleCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            doodleCtx.fillStyle = isEraser ? 'white' : doodleColor;
+            doodleCtx.fill();
+        }
+        
+        function setDoodleColor(color, el) {
+            isEraser = false;
+            doodleColor = color;
+            document.querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+            el.classList.add('active');
+        }
+        
+        function setDoodleEraser() {
+            isEraser = true;
+            document.querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+        }
+        
+        function clearDoodle() {
+            var canvas = document.getElementById('doodleCanvas');
+            var container = document.getElementById('doodleContainer');
+            if (canvas && doodleCtx) {
+                doodleCtx.fillStyle = 'white';
+                doodleCtx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            // 清除所有贴纸
+            placedStickers.forEach(function(s) { s.remove(); });
+            placedStickers = [];
+        }
+        
+        function addSticker(emoji) {
+            var container = document.getElementById('doodleContainer');
+            if (!container) return;
+            
+            var sticker = document.createElement('div');
+            sticker.className = 'placed-sticker';
+            sticker.textContent = emoji;
+            sticker.style.left = '50%';
+            sticker.style.top = '50%';
+            sticker.style.transform = 'translate(-50%, -50%)';
+            
+            // 拖动支持
+            sticker.addEventListener('mousedown', startDragSticker);
+            sticker.addEventListener('touchstart', startDragSticker);
+            
+            container.appendChild(sticker);
+            placedStickers.push(sticker);
+            
+            showToast('贴纸已添加，可拖动调整位置！');
+        }
+        
+        function startDragSticker(e) {
+            e.preventDefault();
+            draggedSticker = e.target;
+            var rect = draggedSticker.getBoundingClientRect();
+            var containerRect = document.getElementById('doodleContainer').getBoundingClientRect();
+            
+            var clientX = e.clientX || e.touches[0].clientX;
+            var clientY = e.clientY || e.touches[0].clientY;
+            
+            dragOffset.x = clientX - rect.left;
+            dragOffset.y = clientY - rect.top;
+            
+            document.addEventListener('mousemove', dragSticker);
+            document.addEventListener('mouseup', stopDragSticker);
+            document.addEventListener('touchmove', dragSticker);
+            document.addEventListener('touchend', stopDragSticker);
+        }
+        
+        function dragSticker(e) {
+            if (!draggedSticker) return;
+            e.preventDefault();
+            
+            var clientX = e.clientX || e.touches[0].clientX;
+            var clientY = e.clientY || e.touches[0].clientY;
+            var containerRect = document.getElementById('doodleContainer').getBoundingClientRect();
+            
+            var x = clientX - containerRect.left - dragOffset.x + 18;
+            var y = clientY - containerRect.top - dragOffset.y + 18;
+            
+            draggedSticker.style.left = x + 'px';
+            draggedSticker.style.top = y + 'px';
+            draggedSticker.style.transform = 'none';
+        }
+        
+        function stopDragSticker() {
+            draggedSticker = null;
+            document.removeEventListener('mousemove', dragSticker);
+            document.removeEventListener('mouseup', stopDragSticker);
+            document.removeEventListener('touchmove', dragSticker);
+            document.removeEventListener('touchend', stopDragSticker);
+        }
+        
+        // ============ Toast ============
+        function showToast(msg) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(function() { t.style.display = 'none'; }, 2000);
+        }
+    </script>
+</body>
+</html>
