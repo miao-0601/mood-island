@@ -394,7 +394,7 @@
         <!-- 我的页 -->
         <div class="page" id="pageProfile">
             <div style="text-align:center;padding:32px 0;">
-                <div class="my-avatar" style="margin:0 auto 16px;">
+                <div class="my-avatar" onclick="changeAvatar()" id="profileAvatar" style="margin:0 auto 16px;width:100px;height:100px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);">
                     <span id="profileAvatarEmoji">😊</span>
                 </div>
                 <div style="font-size:22px;font-weight:600;" id="profileName">我</div>
@@ -646,7 +646,6 @@
         
         function loadProfileAndShow() {
             if (!currentUser) return;
-            // 始终使用 currentUser.email，这是登录时的邮箱
             userData.email = currentUser.email;
             
             supabase.from('profiles').select('*').eq('id', currentUser.id).single().then(function(result) {
@@ -654,16 +653,23 @@
                     userData.name = result.data.username || '我';
                     userData.avatar = result.data.avatar;
                     userData.currentMood = moodRecords.length > 0 ? moodRecords[0].mood : { type: 'good', emoji: '🌤️', text: '今天的心情' };
-                    document.getElementById('userName').textContent = userData.name;
-                    document.getElementById('profileName').textContent = userData.name;
-                    document.getElementById('profileEmail').textContent = currentUser.email || '未设置邮箱';
                 } else {
-                    // 没有profile，使用默认值
-                    document.getElementById('userName').textContent = '我';
-                    document.getElementById('profileName').textContent = '我';
-                    document.getElementById('profileEmail').textContent = currentUser.email || '未设置邮箱';
+                    userData.name = '我';
+                    userData.avatar = null;
                 }
-                // 保存到本地
+                
+                // 更新所有头像显示
+                if (userData.avatar) {
+                    document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '"><div class="my-avatar-edit">📷</div>';
+                    var profileAvatar = document.getElementById('profileAvatar');
+                    if (profileAvatar) {
+                        profileAvatar.innerHTML = '<img src="' + userData.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+                    }
+                }
+                
+                document.getElementById('userName').textContent = userData.name;
+                document.getElementById('profileName').textContent = userData.name;
+                document.getElementById('profileEmail').textContent = currentUser.email || '未设置邮箱';
                 saveUserData();
                 showApp();
             });
@@ -688,18 +694,32 @@
             var saved = localStorage.getItem('userData');
             if (saved) {
                 userData = JSON.parse(saved);
-                document.getElementById('userName').textContent = userData.name;
-                document.getElementById('profileName').textContent = userData.name;
-                // 显示登录邮箱或本地保存的邮箱
-                var displayEmail = (currentUser && currentUser.email) ? currentUser.email : (userData.email || '');
-                document.getElementById('profileEmail').textContent = displayEmail;
+            }
+            
+            // 显示用户信息
+            document.getElementById('userName').textContent = userData.name;
+            document.getElementById('profileName').textContent = userData.name;
+            var displayEmail = (currentUser && currentUser.email) ? currentUser.email : (userData.email || '');
+            document.getElementById('profileEmail').textContent = displayEmail;
+            
+            // 更新首页头像
+            if (userData.avatar) {
+                document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '"><div class="my-avatar-edit">📷</div>';
+            }
+            
+            // 更新"我的"页面头像
+            var profileAvatar = document.getElementById('profileAvatar');
+            if (profileAvatar) {
                 if (userData.avatar) {
-                    document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '"><div class="my-avatar-edit">📷</div>';
+                    profileAvatar.innerHTML = '<img src="' + userData.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+                } else {
+                    profileAvatar.innerHTML = '<span id="profileAvatarEmoji">😊</span>';
                 }
-                if (userData.currentMood) {
-                    document.getElementById('currentMoodEmoji').textContent = userData.currentMood.emoji;
-                    document.getElementById('currentMoodText').textContent = userData.currentMood.text;
-                }
+            }
+            
+            if (userData.currentMood) {
+                document.getElementById('currentMoodEmoji').textContent = userData.currentMood.emoji;
+                document.getElementById('currentMoodText').textContent = userData.currentMood.text;
             }
         }
         
@@ -727,11 +747,11 @@
             var note = document.getElementById('moodNote').value;
             var newRecord = { time: new Date().toISOString(), mood: selectedMood, note: note };
             
-            // 先保存本地
+            // 保存本地
             moodRecords.unshift(newRecord);
             localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
             
-            // 如果已登录且有profile，尝试存云端
+            // 如果已登录，存云端
             if (currentUser && currentUser.id) {
                 supabase.from('mood_records').insert({
                     user_id: currentUser.id,
@@ -741,7 +761,7 @@
                     note: note
                 }).then(function(result) {
                     if (result.error) {
-                        console.log('Cloud save failed, saved locally:', result.error.message);
+                        console.log('Cloud save failed:', result.error.message);
                     }
                 });
             }
@@ -751,12 +771,6 @@
             document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
             document.getElementById('currentMoodText').textContent = selectedMood.text;
             showToast('心情已记录！' + selectedMood.emoji);
-            
-            moodRecords.unshift(newRecord);
-            userData.currentMood = selectedMood;
-            saveUserData();
-            document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
-            document.getElementById('currentMoodText').textContent = selectedMood.text;
             
             document.getElementById('moodNote').value = '';
             document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
@@ -1104,6 +1118,12 @@
             
             // 更新我的界面头像
             document.getElementById('userAvatar').innerHTML = '<img src="' + result + '"><div class="my-avatar-edit">📷</div>';
+            
+            // 更新"我的"页面头像
+            var profileAvatar = document.getElementById('profileAvatar');
+            if (profileAvatar) {
+                profileAvatar.innerHTML = '<img src="' + result + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+            }
             
             // 同步更新好友列表中的我的头像
             renderFriends();
