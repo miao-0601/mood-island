@@ -599,28 +599,34 @@
         }
         
         function loadCloudData() {
-            if (!currentUser) return;
+            if (!currentUser) {
+                // 未登录，从本地加载
+                var localRecords = localStorage.getItem('moodRecords');
+                if (localRecords) {
+                    moodRecords = JSON.parse(localRecords);
+                }
+                updateStats();
+                renderMiniChart();
+                renderAnalysis();
+                return;
+            }
+            
+            // 已登录，从云端加载
             supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).then(function(result) {
                 if (result.data && result.data.length > 0) {
                     var cloudRecords = result.data.map(function(r) {
                         return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note, cloudSaved: true };
                     });
                     
-                    // 合并去重
-                    var localTimes = moodRecords.map(function(r) { return r.time; });
-                    var newRecords = [];
-                    cloudRecords.forEach(function(r) {
-                        if (localTimes.indexOf(r.time) === -1) {
-                            newRecords.push(r);
-                        }
-                    });
-                    if (newRecords.length > 0) {
-                        moodRecords = newRecords.concat(moodRecords);
-                        localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
-                    }
+                    // 去重：云端数据去本地已有
+                    var localTimes = new Set(moodRecords.map(function(r) { return r.time; }));
+                    var uniqueCloud = cloudRecords.filter(function(r) { return !localTimes.has(r.time); });
+                    
+                    // 合并，云端数据在前
+                    moodRecords = uniqueCloud.concat(moodRecords);
+                    localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
                 }
                 loadFriends();
-                // 云端数据加载完成后刷新显示
                 updateStats();
                 renderMiniChart();
                 renderAnalysis();
@@ -646,9 +652,19 @@
         }
         
         supabase.auth.onAuthStateChange(function(event, session) {
-            // 只在用户手动登录/登出时响应，页面加载时不自动登录
             if (event === 'SIGNED_IN' && session) {
                 currentUser = session.user;
+                // 同步头像
+                supabase.from('profiles').select('avatar').eq('id', currentUser.id).single().then(function(r) {
+                    if (r.data && r.data.avatar) {
+                        userData.avatar = r.data.avatar;
+                        saveUserData();
+                        var av = document.getElementById('userAvatar');
+                        if (av) av.innerHTML = '<img src="' + r.data.avatar + '"><div class="my-avatar-edit">📷</div>';
+                        var pav = document.getElementById('profileAvatar');
+                        if (pav) pav.innerHTML = '<img src="' + r.data.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+                    }
+                });
                 loadProfileAndShow();
             } else if (event === 'SIGNED_OUT') {
                 currentUser = null;
@@ -763,11 +779,7 @@
             var note = document.getElementById('moodNote').value;
             var newRecord = { time: new Date().toISOString(), mood: selectedMood, note: note };
             
-            // 只在本地添加一次
-            moodRecords.unshift(newRecord);
-            localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
-            
-            // 如果已登录，存云端
+            // 如果已登录，优先存云端
             if (currentUser && currentUser.id) {
                 supabase.from('mood_records').insert({
                     user_id: currentUser.id,
@@ -777,23 +789,57 @@
                     note: note
                 }).then(function(result) {
                     if (result.error) {
-                        console.log('云端保存失败:', result.error.message);
+                        // 云端失败，存本地
+                        moodRecords.unshift(newRecord);
+                        localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+                    } else {
+                        // 云端成功，直接刷新云端数据
+                        loadCloudDataAndRefresh();
                     }
+                    userData.currentMood = selectedMood;
+                    saveUserData();
+                    document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
+                    document.getElementById('currentMoodText').textContent = selectedMood.text;
+                    showToast('心情已记录！' + selectedMood.emoji);
+                    document.getElementById('moodNote').value = '';
+                    document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
+                    selectedMood = null;
+                    updateStats();
+                    renderMiniChart();
+                    renderAnalysis();
                 });
+            } else {
+                // 未登录，只存本地
+                moodRecords.unshift(newRecord);
+                localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+                userData.currentMood = selectedMood;
+                saveUserData();
+                document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
+                document.getElementById('currentMoodText').textContent = selectedMood.text;
+                showToast('心情已记录（本地）！' + selectedMood.emoji);
+                document.getElementById('moodNote').value = '';
+                document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
+                selectedMood = null;
+                updateStats();
+                renderMiniChart();
+                renderAnalysis();
             }
-            
-            userData.currentMood = selectedMood;
-            saveUserData();
-            document.getElementById('currentMoodEmoji').textContent = selectedMood.emoji;
-            document.getElementById('currentMoodText').textContent = selectedMood.text;
-            showToast('心情已记录！' + selectedMood.emoji);
-            
-            document.getElementById('moodNote').value = '';
-            document.querySelectorAll('.mood-item').forEach(function(e) { e.classList.remove('selected'); });
-            selectedMood = null;
-            updateStats();
-            renderMiniChart();
-            renderAnalysis();
+        }
+        
+        // 加载云端数据并刷新界面
+        function loadCloudDataAndRefresh() {
+            if (!currentUser) return;
+            supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).then(function(result) {
+                if (result.data) {
+                    moodRecords = result.data.map(function(r) {
+                        return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note };
+                    });
+                    localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+                    updateStats();
+                    renderMiniChart();
+                    renderAnalysis();
+                }
+            });
         }
         
         function updateStats() {
@@ -1254,18 +1300,18 @@
             var q = document.getElementById('friendSearchInput').value.toLowerCase().trim();
             var el = document.getElementById('searchResults');
             if (!q) { el.innerHTML = ''; return; }
+            if (q.length < 2) { el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">请输入至少2个字符</div>'; return; }
             el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">搜索中...</div>';
             
-            // 从 Supabase 搜索用户
-            supabase.from('profiles').select('*').or('username.ilike.%' + q + ',email.ilike.%' + q + ')').then(function(result) {
+            // 只搜索用户名（profiles表没有email字段）
+            supabase.from('profiles').select('*').ilike('username', '%' + q + '%').then(function(result) {
                 if (result.error) {
-                    el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">搜索失败</div>';
+                    el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">搜索失败，请重试</div>';
+                    console.log('Search error:', result.error);
                     return;
                 }
-                var found = result.data.filter(function(u) {
-                    // 排除自己
+                var found = (result.data || []).filter(function(u) {
                     if (currentUser && u.id === currentUser.id) return false;
-                    // 排除已添加的好友
                     if (friends.some(function(f) { return f.id === u.id; })) return false;
                     return true;
                 });
@@ -1277,7 +1323,7 @@
                 el.innerHTML = found.map(function(u) {
                     return '<div class="search-result" onclick="addFriendFromSearch(\'' + u.id + '\')">' +
                         '<div class="search-avatar">' + (u.avatar ? '<img src="' + u.avatar + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' : '😊') + '</div>' +
-                        '<div class="search-info"><div class="search-name">' + (u.username || '未知') + '</div><div class="search-email">' + (u.email || '') + '</div></div>' +
+                        '<div class="search-info"><div class="search-name">' + (u.username || '未知') + '</div><div class="search-email">' + (currentUser ? currentUser.email : '') + '</div></div>' +
                         '<button class="add-btn-small">添加</button></div>';
                 }).join('');
             });
@@ -1361,10 +1407,10 @@
                     slotStart.setHours(h, 0, 0, 0);
                     var slotEnd = new Date(now);
                     slotEnd.setHours(h + 2, 0, 0, 0);
-                    slots.push({ start: slotStart, end: slotEnd, label: h + '点', isHour: true });
+                    slots.push({ start: slotStart, end: slotEnd, label: h + '点' });
                 }
             } else if (currentAnalysisType === 'week') {
-                // 本周：每天一个槽（7天）
+                // 本周：固定7天
                 var monday = new Date(now);
                 var dayOfWeek = monday.getDay();
                 var diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -1373,22 +1419,20 @@
                 for (var di = 0; di < 7; di++) {
                     var d = new Date(monday);
                     d.setDate(monday.getDate() + di);
-                    if (d > now) break;
                     var nd = new Date(d);
                     nd.setHours(23, 59, 59, 999);
-                    slots.push({ start: d, end: nd, label: dayNames[di], isHour: false, isDay: true });
+                    slots.push({ start: d, end: nd, label: dayNames[di] });
                 }
             } else {
-                // 本月：每天一个槽
+                // 本月：固定显示当月所有天
                 var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
                 var monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
                 for (var mi = 0; mi < monthDays; mi++) {
                     var md = new Date(firstDay);
                     md.setDate(1 + mi);
-                    if (md > now) break;
                     var mnd = new Date(md);
                     mnd.setHours(23, 59, 59, 999);
-                    slots.push({ start: md, end: mnd, label: md.getDate() + '日', isHour: false, isDay: true });
+                    slots.push({ start: md, end: mnd, label: md.getDate() + '日' });
                 }
             }
             return slots;
