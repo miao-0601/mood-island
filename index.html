@@ -579,7 +579,7 @@
             document.getElementById('appContainer').classList.remove('hidden');
             document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
             
-            // 先从本地加载
+            // 从本地加载
             var localRecords = localStorage.getItem('moodRecords');
             if (localRecords) {
                 moodRecords = JSON.parse(localRecords);
@@ -588,9 +588,10 @@
             // 更新用户信息显示
             loadUserData();
             
-            // 再尝试从云端同步（如果已登录）
+            // 从云端同步
             loadCloudData();
             
+            // 显示数据
             updateStats();
             renderFriends();
             renderMiniChart();
@@ -602,21 +603,28 @@
             supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).then(function(result) {
                 if (result.data && result.data.length > 0) {
                     var cloudRecords = result.data.map(function(r) {
-                        return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note };
+                        return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note, cloudSaved: true };
                     });
-                    // 合并本地和云端，去重
+                    
+                    // 合并去重
                     var localTimes = moodRecords.map(function(r) { return r.time; });
-                    var merged = moodRecords.slice();
+                    var newRecords = [];
                     cloudRecords.forEach(function(r) {
                         if (localTimes.indexOf(r.time) === -1) {
-                            merged.unshift(r);
+                            newRecords.push(r);
                         }
                     });
-                    moodRecords = merged;
-                    localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+                    if (newRecords.length > 0) {
+                        moodRecords = newRecords.concat(moodRecords);
+                        localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
+                    }
                 }
+                loadFriends();
+                // 云端数据加载完成后刷新显示
+                updateStats();
+                renderMiniChart();
+                renderAnalysis();
             });
-            loadFriends();
         }
         
         function loadFriends() {
@@ -747,7 +755,7 @@
             var note = document.getElementById('moodNote').value;
             var newRecord = { time: new Date().toISOString(), mood: selectedMood, note: note };
             
-            // 保存本地
+            // 只保存本地一次
             moodRecords.unshift(newRecord);
             localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
             
@@ -761,7 +769,10 @@
                     note: note
                 }).then(function(result) {
                     if (result.error) {
-                        console.log('Cloud save failed:', result.error.message);
+                        console.log('云端保存失败，已存本地:', result.error.message);
+                    } else {
+                        // 云端成功，标记这条记录
+                        newRecord.cloudSaved = true;
                     }
                 });
             }
@@ -781,10 +792,18 @@
         }
         
         function updateStats() {
-            document.getElementById('statCount').textContent = moodRecords.length;
-            var uniqueDays = new Set(moodRecords.map(function(r) { return new Date(r.time).toDateString(); })).size;
+            // 去重后统计
+            var seen = {};
+            var uniqueRecords = moodRecords.filter(function(r) {
+                if (seen[r.time]) return false;
+                seen[r.time] = true;
+                return true;
+            });
+            document.getElementById('statCount').textContent = uniqueRecords.length;
+            var uniqueDays = new Set(uniqueRecords.map(function(r) { return new Date(r.time).toDateString(); })).size;
             document.getElementById('statDays').textContent = uniqueDays;
             document.getElementById('statWarmth').textContent = warmthRecords.length;
+            document.getElementById('statFriends').textContent = friends.length;
         }
         
         // ============ 心情图表 ============
@@ -792,7 +811,15 @@
             var container = document.getElementById('miniChart');
             if (!container) return;
             
-            if (moodRecords.length === 0) {
+            // 去重
+            var seen = {};
+            var uniqueRecords = moodRecords.filter(function(r) {
+                if (seen[r.time]) return false;
+                seen[r.time] = true;
+                return true;
+            });
+            
+            if (uniqueRecords.length === 0) {
                 container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:14px;">还没有记录哦，快去记录心情吧～ 📝</div>';
                 return;
             }
@@ -808,7 +835,7 @@
             var dayCounts = {};
             days.forEach(function(d) { dayCounts[d] = { sunny: 0, good: 0, normal: 0, low: 0, total: 0 }; });
             
-            moodRecords.forEach(function(r) {
+            uniqueRecords.forEach(function(r) {
                 var d = new Date(r.time).toDateString();
                 if (dayCounts[d]) {
                     var type = getMoodType(r.mood);
@@ -935,10 +962,18 @@
         // ============ 心情历史 ============
         function showMoodHistory() {
             var html = '<div class="history-list">';
-            if (moodRecords.length === 0) {
+            // 去重：按时间戳去重
+            var seen = {};
+            var uniqueRecords = moodRecords.filter(function(r) {
+                if (seen[r.time]) return false;
+                seen[r.time] = true;
+                return true;
+            });
+            
+            if (uniqueRecords.length === 0) {
                 html += '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">还没有记录</div><div class="empty-desc">快去记录你的心情吧～</div></div>';
             } else {
-                moodRecords.sort(function(a, b) { return new Date(b.time) - new Date(a.time); }).forEach(function(r) {
+                uniqueRecords.sort(function(a, b) { return new Date(b.time) - new Date(a.time); }).forEach(function(r) {
                     var timeStr = formatTime(r.time);
                     var emoji = getMoodEmoji(r.mood);
                     var note = r.note || getMoodText(r.mood) || '';
@@ -1201,28 +1236,59 @@
             var q = document.getElementById('friendSearchInput').value.toLowerCase().trim();
             var el = document.getElementById('searchResults');
             if (!q) { el.innerHTML = ''; return; }
-            var found = allUsers.filter(function(u) {
-                return !friends.some(function(f) { return f.id === u.id; }) &&
-                    (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+            el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">搜索中...</div>';
+            
+            // 从 Supabase 搜索用户
+            supabase.from('profiles').select('*').or('username.ilike.%' + q + ',email.ilike.%' + q + ')').then(function(result) {
+                if (result.error) {
+                    el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">搜索失败</div>';
+                    return;
+                }
+                var found = result.data.filter(function(u) {
+                    // 排除自己
+                    if (currentUser && u.id === currentUser.id) return false;
+                    // 排除已添加的好友
+                    if (friends.some(function(f) { return f.id === u.id; })) return false;
+                    return true;
+                });
+                
+                if (!found.length) {
+                    el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">未找到匹配用户</div>';
+                    return;
+                }
+                el.innerHTML = found.map(function(u) {
+                    return '<div class="search-result" onclick="addFriendFromSearch(\'' + u.id + '\')">' +
+                        '<div class="search-avatar">' + (u.avatar ? '<img src="' + u.avatar + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' : '😊') + '</div>' +
+                        '<div class="search-info"><div class="search-name">' + (u.username || '未知') + '</div><div class="search-email">' + (u.email || '') + '</div></div>' +
+                        '<button class="add-btn-small">添加</button></div>';
+                }).join('');
             });
-            if (!found.length) { el.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">未找到匹配用户</div>'; return; }
-            el.innerHTML = found.map(function(u) {
-                return '<div class="search-result" onclick="addFriendFromSearch(\'' + u.id + '\')">' +
-                    '<div class="search-avatar">' + u.avatar + '</div>' +
-                    '<div class="search-info"><div class="search-name">' + u.name + '</div><div class="search-email">' + u.email + '</div></div>' +
-                    '<button class="add-btn-small">添加</button></div>';
-            }).join('');
         }
         
         function addFriendFromSearch(userId) {
-            var user = allUsers.find(function(u) { return u.id === userId; });
-            if (!user) return;
-            if (friends.some(function(f) { return f.id === userId; })) return;
-            friends.push({id: user.id, name: user.name, avatar: user.avatar, mood: user.mood, moodText: user.moodText, email: user.email});
-            closeModal();
-            renderFriends();
-            document.getElementById('statFriends').textContent = friends.length;
-            showToast('已添加 ' + user.name + '！');
+            // 先添加到本地好友列表
+            supabase.from('profiles').select('*').eq('id', userId).single().then(function(result) {
+                if (!result.data) return;
+                var u = result.data;
+                var newFriend = { id: u.id, name: u.username || '未知', avatar: u.avatar, mood: '☁️', moodText: '还没记录', email: u.email };
+                
+                // 添加到云端好友关系
+                supabase.from('friends').insert({
+                    user_id: currentUser.id,
+                    friend_id: userId,
+                    status: 'accepted' // 直接添加为已接受
+                }).then(function(insertResult) {
+                    if (insertResult.error) {
+                        showToast('添加失败: ' + insertResult.error.message);
+                    } else {
+                        friends.push(newFriend);
+                        renderFriends();
+                        updateStats();
+                        closeModal();
+                        showToast('已添加 ' + newFriend.name + ' 为好友！');
+                    }
+                });
+            });
         }
         
         // ============ 心情分析功能 ============
