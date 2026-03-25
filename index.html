@@ -600,7 +600,6 @@
         
         function loadCloudData() {
             if (!currentUser) {
-                // 未登录，从本地加载
                 var localRecords = localStorage.getItem('moodRecords');
                 if (localRecords) {
                     moodRecords = JSON.parse(localRecords);
@@ -610,22 +609,54 @@
                 renderAnalysis();
                 return;
             }
+            loadCloudDataFull();
+        }
+        
+        function loadCloudDataFull() {
+            if (!currentUser) return;
             
-            // 已登录，从云端加载
-            supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).then(function(result) {
-                if (result.data && result.data.length > 0) {
-                    var cloudRecords = result.data.map(function(r) {
-                        return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note, cloudSaved: true };
+            // 并行加载 profile 和 mood_records
+            Promise.all([
+                supabase.from('profiles').select('*').eq('id', currentUser.id).single(),
+                supabase.from('mood_records').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false })
+            ]).then(function(results) {
+                var profileResult = results[0];
+                var recordsResult = results[1];
+                
+                // 更新用户信息
+                if (profileResult.data) {
+                    userData.name = profileResult.data.username || '我';
+                    userData.avatar = profileResult.data.avatar;
+                    userData.email = currentUser.email;
+                } else {
+                    userData.name = '我';
+                    userData.avatar = null;
+                }
+                saveUserData();
+                
+                // 更新UI
+                document.getElementById('userName').textContent = userData.name;
+                document.getElementById('profileName').textContent = userData.name;
+                document.getElementById('profileEmail').textContent = currentUser.email || '';
+                if (userData.avatar) {
+                    document.getElementById('userAvatar').innerHTML = '<img src="' + userData.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"><div class="my-avatar-edit">📷</div>';
+                    var pav = document.getElementById('profileAvatar');
+                    if (pav) pav.innerHTML = '<img src="' + userData.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+                }
+                
+                // 更新心情记录（云端数据直接替换本地）
+                if (recordsResult.data && recordsResult.data.length > 0) {
+                    moodRecords = recordsResult.data.map(function(r) {
+                        return { time: r.created_at, mood: { type: r.mood_type, emoji: r.mood_emoji, text: r.mood_text }, note: r.note };
                     });
-                    
-                    // 去重：云端数据去本地已有
-                    var localTimes = new Set(moodRecords.map(function(r) { return r.time; }));
-                    var uniqueCloud = cloudRecords.filter(function(r) { return !localTimes.has(r.time); });
-                    
-                    // 合并，云端数据在前
-                    moodRecords = uniqueCloud.concat(moodRecords);
+                    if (moodRecords.length > 0) {
+                        userData.currentMood = moodRecords[0].mood;
+                        document.getElementById('currentMoodEmoji').textContent = moodRecords[0].mood.emoji;
+                        document.getElementById('currentMoodText').textContent = moodRecords[0].mood.text;
+                    }
                     localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
                 }
+                
                 loadFriends();
                 updateStats();
                 renderMiniChart();
@@ -654,18 +685,13 @@
         supabase.auth.onAuthStateChange(function(event, session) {
             if (event === 'SIGNED_IN' && session) {
                 currentUser = session.user;
-                // 同步头像
-                supabase.from('profiles').select('avatar').eq('id', currentUser.id).single().then(function(r) {
-                    if (r.data && r.data.avatar) {
-                        userData.avatar = r.data.avatar;
-                        saveUserData();
-                        var av = document.getElementById('userAvatar');
-                        if (av) av.innerHTML = '<img src="' + r.data.avatar + '"><div class="my-avatar-edit">📷</div>';
-                        var pav = document.getElementById('profileAvatar');
-                        if (pav) pav.innerHTML = '<img src="' + r.data.avatar + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
-                    }
-                });
-                loadProfileAndShow();
+                userData.email = session.user.email;
+                // 登录后显示应用（显示loading状态）
+                document.getElementById('authContainer').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+                document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+                // 从云端加载完整数据
+                loadCloudDataFull();
             } else if (event === 'SIGNED_OUT') {
                 currentUser = null;
                 moodRecords = [];
@@ -1323,7 +1349,7 @@
                 el.innerHTML = found.map(function(u) {
                     return '<div class="search-result" onclick="addFriendFromSearch(\'' + u.id + '\')">' +
                         '<div class="search-avatar">' + (u.avatar ? '<img src="' + u.avatar + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' : '😊') + '</div>' +
-                        '<div class="search-info"><div class="search-name">' + (u.username || '未知') + '</div><div class="search-email">' + (currentUser ? currentUser.email : '') + '</div></div>' +
+                        '<div class="search-info"><div class="search-name">' + (u.username || '未知') + '</div></div>' +
                         '<button class="add-btn-small">添加</button></div>';
                 }).join('');
             });
@@ -1401,33 +1427,34 @@
             var now = new Date();
             var slots = [];
             if (currentAnalysisType === 'day') {
-                // 今日：每2小时一个槽
-                for (var h = 0; h < 24; h += 2) {
+                // 今日：每2小时一个槽（只显示到现在的时间）
+                var currentHour = now.getHours();
+                for (var h = 0; h <= currentHour; h += 2) {
+                    if (h + 2 > currentHour && h !== currentHour) continue;
                     var slotStart = new Date(now);
                     slotStart.setHours(h, 0, 0, 0);
                     var slotEnd = new Date(now);
-                    slotEnd.setHours(h + 2, 0, 0, 0);
+                    slotEnd.setHours(Math.min(h + 2, 24), 0, 0, 0);
                     slots.push({ start: slotStart, end: slotEnd, label: h + '点' });
                 }
             } else if (currentAnalysisType === 'week') {
-                // 本周：固定7天
-                var monday = new Date(now);
-                var dayOfWeek = monday.getDay();
-                var diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-                monday.setDate(monday.getDate() + diff);
-                var dayNames = ['周一','周二','周三','周四','周五','周六','周日'];
-                for (var di = 0; di < 7; di++) {
-                    var d = new Date(monday);
-                    d.setDate(monday.getDate() + di);
+                // 本周：周一到今天（根据实际记录动态）
+                var dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+                var weekStart = new Date(now);
+                weekStart.setDate(weekStart.getDate() - now.getDay());
+                weekStart.setHours(0, 0, 0, 0);
+                for (var di = 0; di <= now.getDay(); di++) {
+                    var d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + di);
+                    if (d > now) break;
                     var nd = new Date(d);
                     nd.setHours(23, 59, 59, 999);
-                    slots.push({ start: d, end: nd, label: dayNames[di] });
+                    slots.push({ start: d, end: nd, label: dayNames[d.getDay()] });
                 }
             } else {
-                // 本月：固定显示当月所有天
+                // 本月：1号到今天
                 var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-                var monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-                for (var mi = 0; mi < monthDays; mi++) {
+                for (var mi = 0; mi < now.getDate(); mi++) {
                     var md = new Date(firstDay);
                     md.setDate(1 + mi);
                     var mnd = new Date(md);
