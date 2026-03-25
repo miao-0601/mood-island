@@ -646,9 +646,16 @@
         }
         
         supabase.auth.onAuthStateChange(function(event, session) {
-            if (session) {
+            // 只在用户手动登录/登出时响应，页面加载时不自动登录
+            if (event === 'SIGNED_IN' && session) {
                 currentUser = session.user;
                 loadProfileAndShow();
+            } else if (event === 'SIGNED_OUT') {
+                currentUser = null;
+                moodRecords = [];
+                friends = [];
+                document.getElementById('appContainer').classList.add('hidden');
+                document.getElementById('authContainer').classList.remove('hidden');
             }
         });
         
@@ -696,7 +703,8 @@
             }
         }
         
-        checkAuth();
+        // 关闭自动登录，用户必须手动点登录
+        // checkAuth();
         
         function loadUserData() {
             var saved = localStorage.getItem('userData');
@@ -755,7 +763,7 @@
             var note = document.getElementById('moodNote').value;
             var newRecord = { time: new Date().toISOString(), mood: selectedMood, note: note };
             
-            // 只保存本地一次
+            // 只在本地添加一次
             moodRecords.unshift(newRecord);
             localStorage.setItem('moodRecords', JSON.stringify(moodRecords));
             
@@ -769,10 +777,7 @@
                     note: note
                 }).then(function(result) {
                     if (result.error) {
-                        console.log('云端保存失败，已存本地:', result.error.message);
-                    } else {
-                        // 云端成功，标记这条记录
-                        newRecord.cloudSaved = true;
+                        console.log('云端保存失败:', result.error.message);
                     }
                 });
             }
@@ -1151,6 +1156,19 @@
             userData.avatar = result;
             saveUserData();
             
+            // 保存到云端
+            if (currentUser && currentUser.id) {
+                supabase.from('profiles').upsert({
+                    id: currentUser.id,
+                    avatar: result,
+                    username: userData.name
+                }).then(function(res) {
+                    if (res.error) {
+                        console.log('头像云端保存失败:', res.error.message);
+                    }
+                });
+            }
+            
             // 更新我的界面头像
             document.getElementById('userAvatar').innerHTML = '<img src="' + result + '"><div class="my-avatar-edit">📷</div>';
             
@@ -1337,38 +1355,40 @@
             var now = new Date();
             var slots = [];
             if (currentAnalysisType === 'day') {
-                // 今日：每2小时一个槽，共12个
+                // 今日：每2小时一个槽
                 for (var h = 0; h < 24; h += 2) {
                     var slotStart = new Date(now);
                     slotStart.setHours(h, 0, 0, 0);
                     var slotEnd = new Date(now);
                     slotEnd.setHours(h + 2, 0, 0, 0);
-                    slots.push({ start: slotStart, end: slotEnd, label: h + '点', dayOfWeek: null });
+                    slots.push({ start: slotStart, end: slotEnd, label: h + '点', isHour: true });
                 }
             } else if (currentAnalysisType === 'week') {
-                // 本周：周一到周日
+                // 本周：每天一个槽（7天）
                 var monday = new Date(now);
-                var day = monday.getDay();
-                var diff = day === 0 ? -6 : 1 - day;
+                var dayOfWeek = monday.getDay();
+                var diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
                 monday.setDate(monday.getDate() + diff);
-                for (var i = 0; i < 7; i++) {
+                var dayNames = ['周一','周二','周三','周四','周五','周六','周日'];
+                for (var di = 0; di < 7; di++) {
                     var d = new Date(monday);
-                    d.setDate(monday.getDate() + i);
+                    d.setDate(monday.getDate() + di);
+                    if (d > now) break;
                     var nd = new Date(d);
                     nd.setHours(23, 59, 59, 999);
-                    slots.push({ start: d, end: nd, label: ['周一','周二','周三','周四','周五','周六','周日'][i], dayOfWeek: i });
+                    slots.push({ start: d, end: nd, label: dayNames[di], isHour: false, isDay: true });
                 }
             } else {
-                // 本月：按周分组，约4-5个槽
+                // 本月：每天一个槽
                 var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-                for (var w = 0; w < 5; w++) {
-                    var ws = new Date(firstDay);
-                    ws.setDate(1 + w * 7);
-                    if (ws > now) break;
-                    var we = new Date(ws);
-                    we.setDate(we.getDate() + 6);
-                    if (we > now) we = now;
-                    slots.push({ start: ws, end: we, label: '第' + (w + 1) + '周', dayOfWeek: null });
+                var monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                for (var mi = 0; mi < monthDays; mi++) {
+                    var md = new Date(firstDay);
+                    md.setDate(1 + mi);
+                    if (md > now) break;
+                    var mnd = new Date(md);
+                    mnd.setHours(23, 59, 59, 999);
+                    slots.push({ start: md, end: mnd, label: md.getDate() + '日', isHour: false, isDay: true });
                 }
             }
             return slots;
